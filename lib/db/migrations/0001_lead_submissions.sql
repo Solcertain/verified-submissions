@@ -22,8 +22,10 @@ create unique index if not exists lead_submissions_certificate_url_idx
   on lead_submissions (certificate_url);
 
 -- Rows hold lead PII (raw_payload_json) and full TrustedForm session data
--- (trustedform_raw_json), so no client role may read this table. Enabling RLS
--- with zero policies denies anon and authenticated outright.
+-- (trustedform_raw_json), so no client-facing role may read this table.
+-- Enabling RLS with zero policies denies every non-owner role by default. On
+-- plain Postgres that is defence in depth; if this database is ever moved to
+-- Supabase it is what keeps the anon and authenticated roles out.
 --
 -- Deliberately NOT "force row level security": the API connects directly over
 -- DATABASE_URL as the table owner, and owners bypass RLS unless FORCE is set.
