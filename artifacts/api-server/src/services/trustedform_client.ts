@@ -1,7 +1,11 @@
 import { logger } from "../lib/logger.js";
 
 const TRUSTED_FORM_DOMAIN = "https://cert.trustedform.com";
-const REQUEST_TIMEOUT_MS = 15_000;
+// The claim runs synchronously on the Lead Prosper intake path, so a slow or
+// degraded ActiveProspect stalls lead delivery for every waiting lead. Keep this
+// well under Lead Prosper's own enhancement timeout; a claim that misses the
+// window degrades to an "inconclusive" result rather than blocking the lead.
+const REQUEST_TIMEOUT_MS = 5_000;
 
 interface TrustedFormFetchResponse {
   headers: { get(name: string): string | null };
