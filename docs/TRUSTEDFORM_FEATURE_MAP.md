@@ -227,3 +227,61 @@ but certificates arriving from other domains may not, and `verify` alone cannot 
 Both certificates claimed so far originated at `survey.solar-advisors.org`, not
 `solarenergynerds.com`. Whether that domain is a Solcertain property or a third-party publisher
 changes who owns the fix and how urgent it is. **Unresolved.**
+
+---
+
+## 7. First real finding — partner consent gap (settled)
+
+The §6 ambiguity is resolved. A page-snapshot scan of a `survey.solar-advisors.org` certificate
+(partner traffic reaching campaign 23668 via supplier **Simple Tree**) returned:
+
+```
+found:     "consent", "Terms", "Privacy Policy", "text messages"
+not_found: "prior express written consent", "automatic telephone dialing system",
+           "autodialed", "prerecorded", "Do Not Call"
+```
+
+So the page is **not** blank on consent — it carries a generic consent/terms blurb. What it lacks
+is every phrase that makes consent valid for autodialed or prerecorded contact. This is therefore
+**not** a tagging or detection artifact: the required language is genuinely absent.
+
+For contrast, our own form's `TCPA_TEXT` (`sen-site/form-app/src/steps/Submit.jsx:15`) contains
+all five: prior express written consent, automatic telephone dialing system, artificial or
+prerecorded voice, and state/federal/corporate Do Not Call list.
+
+**Scans and verify are complementary and both are needed.** `verify` returned
+`language_approved: false` with `languages: []` and could not say why; the scan produced the
+per-term breakdown that made the finding actionable.
+
+### The lead itself
+
+| Signal | Value |
+|---|---|
+| `bot_detected` | `false` |
+| `form_input_method` | `["typing", "autofill"]` |
+| `seconds_on_page` | 133 |
+| `os` | iOS 18.7, mobile |
+| `approx_ip_geo` | New Providence, **New Jersey** |
+| Lead `state` field | **"NY"** |
+| Lead `zip_code` | 07974 — which is New Providence, **NJ** |
+| Lead `utility_provider` | "Pg&e" — a **California** utility |
+
+A real human spent over two minutes typing on a phone. The person is genuine; the **data** is
+broken. IP geo agrees with the zip code, so `state` is simply mis-populated, and the utility is
+from the wrong coast entirely.
+
+Every buyer rejected it — `state is invalid`, `zip_code is invalid`, `utility_provider is invalid`.
+
+**Two distinct problems, and the engine must not conflate them:**
+
+1. **Compliance** — consent language missing the TCPA essentials, on leads being resold onward.
+2. **Data quality** — a broken `state` field and wrong `utility_provider` making leads unsellable.
+
+Neither is bot fraud, and a bot-only model would score this lead clean. Authenticity, consent, and
+sellability are three different axes.
+
+### Still unusable
+
+`form_input_kpm` 9651.9 and `form_input_wpm` 3453.1 across 133 seconds — again not physically
+meaningful, and the ratio between them differs from the earlier certificate, so it is not a fixed
+scaling factor. Keep both out of scoring pending ActiveProspect's answer on units.
