@@ -72,7 +72,85 @@ delegates to `scoreAndRouteLead()`, maps to flat fields, returns. Preserve this.
 
 ## Incomplete components
 
-### The engine is coupled to a retired form — the headline finding
+### The text parser returns nothing on the repo's own sample — start here
+
+Verified empirically on 2026-10-05 by POSTing
+`attached_assets/verified_submission_event_1774489519467.md` to
+`/api/score-and-route/from-text` (no certificate claim consumed). That log is
+unmistakably a real human: 120 events, a ZIP typed character by character
+(`'2' → '27' → '270' → '2704' → '27041'`), an address typed the same way, and a slider dragged
+back and forth 17 times. The engine returned:
+
+```
+score: 0   status: "reject"   confidence: "low"
+meaningful_event_count: 0   resize_event_count: 0   slider_change_count: 0
+session_seconds: null   field_map: {}
+parse_notes: ["certificate_created_at not found", "submitted_at not found —
+  form submission event missing", "consent language detected event not found",
+  "No key contact fields could be extracted"]
+```
+
+**Root cause.** `TEXT_LINE_RE` (`event_parser.ts:27`) requires whitespace between the timestamp,
+the replay offset, and the event text:
+
+```
+/^(\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\s+([\d:]+)\s+(.+)$/
+```
+
+The sample's lines have **no whitespace**: `2026/03/25 18:13:290:00certificate created`. The file is
+a markdown copy-paste out of the TrustedForm web UI — cell delimiters collapsed and brackets
+escaped (`\[input-deb5301c\]`). No line matches, so no event is parsed.
+
+**Two separate defects, do not conflate them:**
+1. The committed sample is **not a usable fixture** in its current form. It needs normalizing, or
+   replacing with a raw API-sourced certificate.
+2. The parser has latent bugs that will bite on real data regardless:
+   `SUBMITTED_RE = /submitted form/i` but TrustedForm emits plain `submitted`; and
+   `FIELD_CHANGE_RE`'s `\[(.+?)\]` captures a trailing backslash on escaped input.
+
+**Why this matters more than anything else here.** A genuine human lead scores **0 / reject**. If
+Lead Prosper filters were switched on against `vs_pass = false` today, campaign 23668 would reject
+essentially every lead. This is also the likely reason "get real TrustedForm responses" felt like
+the blocker: a sample existed, it silently produced nothing, and the engine looked short of data
+rather than short of a working parser.
+
+### Mouse and scroll activity are not in the data at all
+
+The 120-event sample contains exactly six event verbs: `changed value` (62),
+`resized the window` (32), `clicked on` (18), `chose` (4), `submitted` (1), `certificate created`
+(1). Zero occurrences of keystroke, keypress, typed, backspace, delete, scroll, mouse, moved,
+hover, focus, blur, paste, or autofill.
+
+So of the spec's twelve features:
+
+| Feature | Derivable from the event log? |
+|---|---|
+| session duration, meaningful event count, field timing | **Yes**, directly |
+| `keystrokes_present`, `backspaces` | **Yes, but only indirectly** — from character-level progression across consecutive `changed value` events on one field. Growth by one character = typing; shrinkage = a backspace. |
+| `changed_value_only_fields`, instant/rapid injection | **Yes** — a value arriving fully formed in a single event. In the sample, `'facebook'` and `'Surry-Yadkin Elec Member Corp'` each appeared whole in one event, while ZIP and address were typed. The same certificate contains both. |
+| linear navigation | Partially, from field order versus form order |
+| **mouse activity, scroll activity** | **No. Not recorded.** Document as a gap; do not fabricate. |
+| `bot_detected` | No — Insights only, not the event log |
+
+The character-progression pattern is the strongest authenticity signal available in this data, and
+**nothing in the engine currently reads it.**
+
+### Two scoring signals have the wrong sign
+
+Both of these are deductions today, and both are evidence of a real human:
+
+- `ERRATIC_SLIDER` (−10, flag `erratic_slider_behavior`). Dragging a slider back and forth is
+  deliberation. The sample human did it 17 times, past
+  `ERRATIC_SLIDER_REVERSAL_THRESHOLD = 3`.
+- `EXCESSIVE_RESIZE` (−5, flag `excessive_resize_activity`), threshold
+  `RESIZE_EVENT_THRESHOLD = 10`. The sample human produced **32** resize events — 27% of the whole
+  log. On mobile, every keyboard open and close fires a window resize, so this penalty fires
+  hardest on ordinary phone traffic.
+
+`INPUT_INSTABILITY` (−10, `REPEATED_FIELD_EDIT_THRESHOLD = 8`) deserves the same scrutiny: the
+slider alone produced 17 edits.
+
+### The engine is coupled to a retired form
 
 The live form at `solarenergynerds.com/form-step/` serves the **React** app
 (`/form-app/assets/index-DXfSJRjk.js`). The Heyflow variant is retired. But three modules are
@@ -176,6 +254,10 @@ insights_client ────┘                   (NEW: typed,          (pure, n
 ## Implementation plan
 
 ### P0 — required for a working MVP
+0. **Fix the text parser so it parses a real event log at all**, and normalize or replace the
+   committed sample so it works as a fixture. Nothing downstream is measurable until a known-human
+   certificate stops scoring 0. Add a regression test asserting a non-zero score and non-empty
+   `field_map` for that fixture.
 1. Set `INTERNAL_API_KEY`; verify unauthenticated POST returns **401**. *(done on the new deployment)*
 2. Provision the database and apply migrations. *(done — Neon; `0001_lead_submissions.sql` applied; RLS verified)*
 3. Set `ACTIVEPROSPECT_API_KEY` from Solcertain's own account.
@@ -210,6 +292,14 @@ insights_client ────┘                   (NEW: typed,          (pure, n
 
 Objective pass/fail:
 
+0. The committed human-certificate fixture parses: non-empty `field_map`, non-zero
+   `meaningful_event_count`, non-null `session_seconds`, and a score that is **not** 0/`reject`.
+   Asserted by a regression test.
+0b. Character-level progression is read: a field typed one character at a time yields
+   `keystrokes_present = true`, and a field arriving fully formed in one event is flagged as
+   injected. Both covered by fixtures.
+0c. `erratic_slider_behavior` and `excessive_resize_activity` have signs justified against real
+   distributions, or are removed. Mobile traffic is not penalised for keyboard-driven resizes.
 1. `GET /api/healthz` returns `{"status":"ok"}` on the Solcertain deployment.
 2. Unauthenticated `POST /api/leadprosper/pre-ping` returns **401**.
 3. A real React-form certificate returns all 16 `vs_*` fields populated.
