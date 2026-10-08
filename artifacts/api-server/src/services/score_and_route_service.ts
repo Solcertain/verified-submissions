@@ -3,6 +3,7 @@ import {
   is_valid_trustedform_url,
   normalize_certificate_url,
 } from "./trustedform_client.js";
+import { extract_features, type BehaviouralFeatures } from "./feature_extractor.js";
 import {
   parse_trustedform_text,
   parse_trustedform_payload,
@@ -68,6 +69,7 @@ export type ScoreAndRouteOutcome =
       certificate_url: string;
       claim_result: { ok: boolean; status_code: number | null };
       parsed_lead: ParsedLeadPayload;
+      features: BehaviouralFeatures;
       score: ScoreResult;
       routing: RoutingResult;
       sheet_result: SheetResult;
@@ -160,6 +162,11 @@ export async function scoreAndRouteLead(
     };
   }
 
+  // Behavioural features come straight off the v4 insights/verify response.
+  // The legacy parse below still feeds the old scoring path; see
+  // docs/TRUSTEDFORM_FEATURE_MAP.md for why that model cannot be fed by the API.
+  const features = extract_features(claim_result.data);
+
   // Parse → infer → normalize → score.
   let parsed_lead;
   if (
@@ -238,7 +245,10 @@ export async function scoreAndRouteLead(
     certificate_id: normalized.certificate_id || undefined,
     raw_payload_json: input.raw_payload,
     trustedform_raw_json: claim_result.data,
-    parsed_submission_json: parsed_lead_payload as unknown as Record<string, unknown>,
+    parsed_submission_json: {
+      legacy: parsed_lead_payload,
+      features,
+    } as unknown as Record<string, unknown>,
     score_json: score as unknown as Record<string, unknown>,
     status: score.status,
     processed_at: new Date(),
@@ -249,6 +259,7 @@ export async function scoreAndRouteLead(
     certificate_url,
     claim_result: { ok: claim_result.ok, status_code: claim_result.status_code },
     parsed_lead: parsed_lead_payload,
+    features,
     score,
     routing,
     sheet_result,

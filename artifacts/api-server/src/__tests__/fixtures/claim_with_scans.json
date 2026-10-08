@@ -1,0 +1,109 @@
+{
+  "reason": "Consent language not detected in the certificate. This form has not been setup to allow use of One to One Consent Check. The form did not contain any consent items. The form may not be set up correctly.",
+  "verify": {
+    "result": {
+      "success": false,
+      "one_to_one": null,
+      "form_submitted": true,
+      "language_approved": false,
+      "opt_in_types_allowed": [
+        "manual",
+        "pre-selected",
+        "non-interactive"
+      ],
+      "opt_in_types_satisfied": null,
+      "min_font_size_px_satisfied": null,
+      "min_contrast_ratio_satisfied": null
+    },
+    "languages": [],
+    "advertiser_name": "Solar Energy Nerds",
+    "consent_language_acceptance_enabled": true
+  },
+  "outcome": "failure",
+  "insights": {
+    "scans": {
+      "result": {
+        "success": false,
+        "required": {
+          "found": [
+            "consent",
+            "Terms",
+            "Privacy Policy",
+            "text messages"
+          ],
+          "not_found": [
+            "Do Not Call",
+            "prerecorded",
+            "autodialed",
+            "automatic telephone dialing system",
+            "prior express written consent"
+          ]
+        },
+        "forbidden": {
+          "found": [],
+          "not_found": []
+        }
+      },
+      "required": [
+        "prior express written consent",
+        "automatic telephone dialing system",
+        "autodialed",
+        "prerecorded",
+        "text messages",
+        "Do Not Call",
+        "Privacy Policy",
+        "Terms",
+        "consent"
+      ],
+      "forbidden": []
+    },
+    "properties": {
+      "ip": "203.0.113.1",
+      "os": {
+        "full": "iOS 18.7",
+        "name": "iOS",
+        "version": {
+          "full": "18.7",
+          "major": "18",
+          "minor": "7",
+          "patch": null
+        },
+        "is_mobile": true
+      },
+      "domain": "solar-advisors.org",
+      "browser": {
+        "full": "Mobile Safari 26.6.1",
+        "name": "Mobile Safari",
+        "version": {
+          "full": "26.6.1",
+          "major": "26",
+          "minor": "6",
+          "patch": "1"
+        },
+        "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1"
+      },
+      "page_url": "https://survey.solar-advisors.org/",
+      "is_framed": true,
+      "created_at": "2026-10-08T00:07:21Z",
+      "expires_at": "2027-01-09T00:07:21Z",
+      "age_seconds": 78972,
+      "bot_detected": false,
+      "approx_ip_geo": {
+        "lat": 0,
+        "lon": 0,
+        "city": "Redacted",
+        "state": "New Jersey",
+        "time_zone": "America/New_York",
+        "postal_code": "00000",
+        "country_code": "US"
+      },
+      "form_input_kpm": 9651.86811381054,
+      "form_input_wpm": 3453.0632219776676,
+      "seconds_on_page": 133,
+      "form_input_method": [
+        "typing",
+        "autofill"
+      ]
+    }
+  }
+}
