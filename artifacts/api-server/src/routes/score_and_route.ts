@@ -104,6 +104,7 @@ router.post("/score-and-route", require_api_key, async (req: Request, res: Respo
         cached: false,
         claim_result: outcome.claim_result,
         parsed_lead: outcome.parsed_lead,
+        features: outcome.features,
         score: outcome.score,
         routing: outcome.routing,
         sheet_result: outcome.sheet_result,
