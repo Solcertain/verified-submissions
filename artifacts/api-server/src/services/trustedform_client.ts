@@ -44,6 +44,24 @@ const VERIFY_PARAMS = {
   opt_in_types_allowed: ["manual", "pre-selected", "non-interactive"],
 } as const;
 
+// Page-snapshot text scan, run alongside verify. verify only sees TrustedForm
+// tagged consent (data-tf-element-role); a partner form carrying the disclosure
+// as plain text is invisible to it. Scanning separates "no consent language" from
+// "consent language present but untagged" — two findings with very different
+// remediations. Broad deliberately: the per-term found/not_found breakdown shows
+// what a partner's page actually says.
+const CONSENT_SCAN_TERMS = [
+  "prior express written consent",
+  "automatic telephone dialing system",
+  "autodialed",
+  "prerecorded",
+  "text messages",
+  "Do Not Call",
+  "Privacy Policy",
+  "Terms",
+  "consent",
+] as const;
+
 interface TrustedFormFetchResponse {
   headers: { get(name: string): string | null };
   json(): Promise<unknown>;
@@ -138,7 +156,10 @@ export async function claim_certificate(
       // v4 selects products via operation keys in the body; without one the API
       // answers 400 "No valid products detected".
       body: JSON.stringify({
-        insights: { properties: INSIGHTS_PROPERTIES },
+        insights: {
+          properties: INSIGHTS_PROPERTIES,
+          scans: { required: CONSENT_SCAN_TERMS },
+        },
         verify: VERIFY_PARAMS,
       }),
       signal: controller.signal,
