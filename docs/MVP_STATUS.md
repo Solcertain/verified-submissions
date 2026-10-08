@@ -108,11 +108,46 @@ escaped (`\[input-deb5301c\]`). No line matches, so no event is parsed.
    `SUBMITTED_RE = /submitted form/i` but TrustedForm emits plain `submitted`; and
    `FIELD_CHANGE_RE`'s `\[(.+?)\]` captures a trailing backslash on escaped input.
 
-**Why this matters more than anything else here.** A genuine human lead scores **0 / reject**. If
-Lead Prosper filters were switched on against `vs_pass = false` today, campaign 23668 would reject
-essentially every lead. This is also the likely reason "get real TrustedForm responses" felt like
-the blocker: a sample existed, it silently produced nothing, and the engine looked short of data
-rather than short of a working parser.
+**Scope of that result — important.** The test above exercised `parse_trustedform_text`. The live
+claim path does **not** always use it. `score_and_route_service.ts:165-172` branches:
+
+```ts
+if (typeof claim_result.data["raw_text"] === "string" && (...).length > 0) {
+  parsed_lead = parse_trustedform_text(claim_result.data["raw_text"] as string);
+} else {
+  parsed_lead = parse_trustedform_payload(claim_result.data);
+}
+```
+
+So the proven failure is the text path. It does **not** by itself establish what production does.
+
+### The JSON payload path is unverified guesswork
+
+`parse_trustedform_payload` is built entirely on **guessed** ActiveProspect key names —
+`payload["id"]` / `["certificate_id"]`, `["created_at"]`, `["submitted_at"]`,
+`["consent_language_detected"]`, `["fields"]` / `["field_values"]` / `["answers"]`, and an
+`["events"]` array keyed on `at` / `offset` / `type` / `field` / `value`. Nothing in the repo
+records a real ActiveProspect response to confirm any of them.
+
+It also has a structural problem independent of key names: it passes TrustedForm's raw
+`ev["type"]` straight through, whereas `scoring_engine.ts` matches on the vocabulary the **text**
+parser assigns (`field_changed`, `radio_selected`, `form_submitted`, `noise`, …). Unless
+TrustedForm's own type strings happen to match those exactly, scoring sees unrecognised types and
+counts near-zero meaningful events — the same end state as the text path, by a different route.
+
+The spec anticipated this: *"Do not invent TrustedForm event semantics. Inspect actual available
+sample payloads and existing documentation before defining event mappings."*
+
+**Net position.** Neither parse path is verified against a real ActiveProspect API response. The
+one path that could be tested offline returns nothing. Until a real certificate is claimed and the
+response shape recorded, **no score this system produces should be trusted**, and no Lead Prosper
+filter should act on one. This is the likely reason "get real TrustedForm responses" felt like the
+blocker: a sample existed, it silently produced nothing, and the engine looked short of data rather
+than short of a verified parser.
+
+**The single highest-value next action** is to claim one real certificate with Solcertain's
+ActiveProspect key and record the exact response shape — then write both parsers against that,
+rather than against guesses. A live cert URL can be pulled from a recent campaign 23668 lead.
 
 ### Mouse and scroll activity are not in the data at all
 
@@ -254,13 +289,13 @@ insights_client ────┘                   (NEW: typed,          (pure, n
 ## Implementation plan
 
 ### P0 — required for a working MVP
-0. **Fix the text parser so it parses a real event log at all**, and normalize or replace the
+0. **Claim one real certificate and record the exact ActiveProspect response shape**, then write both parse paths against it instead of guesses. Fix the text parser, and normalize or replace the
    committed sample so it works as a fixture. Nothing downstream is measurable until a known-human
    certificate stops scoring 0. Add a regression test asserting a non-zero score and non-empty
    `field_map` for that fixture.
 1. Set `INTERNAL_API_KEY`; verify unauthenticated POST returns **401**. *(done on the new deployment)*
 2. Provision the database and apply migrations. *(done — Neon; `0001_lead_submissions.sql` applied; RLS verified)*
-3. Set `ACTIVEPROSPECT_API_KEY` from Solcertain's own account.
+3. Set `ACTIVEPROSPECT_API_KEY` from Solcertain's own account. *(done — Secret, Production)*
 4. Deploy, and wire campaign 23668 in **shadow mode** — map all 16 `vs_*` fields, create **no**
    filter rules.
 5. **Capture real certificates from the React form.** Prerequisite for everything below.
