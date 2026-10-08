@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { require_api_key } from "../middlewares/api_key.js";
 import {
   parse_trustedform_text,
 } from "../services/event_parser.js";
@@ -40,7 +41,7 @@ function get_outbound_webhook_config() {
 // The pipeline itself lives in scoreAndRouteLead() so it can be shared with the
 // LeadProsper adapter without an internal HTTP call. This handler only maps the
 // shared outcome onto the original JSON response shape.
-router.post("/score-and-route", async (req: Request, res: Response) => {
+router.post("/score-and-route", require_api_key, async (req: Request, res: Response) => {
   const raw_url = req.body?.certificate_url as string | undefined;
   const force = req.query["force"] === "true" || req.body?.force === true;
 
@@ -114,7 +115,7 @@ router.post("/score-and-route", async (req: Request, res: Response) => {
 
 // POST /api/score-and-route/from-text
 // Same full pipeline but scoring from a raw event log (no live cert claim)
-router.post("/score-and-route/from-text", async (req: Request, res: Response) => {
+router.post("/score-and-route/from-text", require_api_key, async (req: Request, res: Response) => {
   const { event_log_text, certificate_url } = req.body as {
     event_log_text?: string;
     certificate_url?: string;
