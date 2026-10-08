@@ -30,6 +30,20 @@ const INSIGHTS_PROPERTIES = [
   "expires_at",
 ] as const;
 
+// Verify checks consent against the requirements configured on the ActiveProspect
+// account, which suits this form: it uses TrustedForm tagged consent
+// (use_tagged_consent=true with data-tf-element-role attributes) rather than
+// relying on a text scan of the disclosure. advertiser_name is optional overall
+// but is what populates the one_to_one result.
+//
+// opt_in_types_allowed is deliberately permissive for now. This form's pattern is
+// consent-by-submission, so tightening it is a compliance decision to make against
+// real results rather than a guess.
+const VERIFY_PARAMS = {
+  advertiser_name: "Solar Energy Nerds",
+  opt_in_types_allowed: ["manual", "pre-selected", "non-interactive"],
+} as const;
+
 interface TrustedFormFetchResponse {
   headers: { get(name: string): string | null };
   json(): Promise<unknown>;
@@ -123,7 +137,10 @@ export async function claim_certificate(
       },
       // v4 selects products via operation keys in the body; without one the API
       // answers 400 "No valid products detected".
-      body: JSON.stringify({ insights: { properties: INSIGHTS_PROPERTIES } }),
+      body: JSON.stringify({
+        insights: { properties: INSIGHTS_PROPERTIES },
+        verify: VERIFY_PARAMS,
+      }),
       signal: controller.signal,
     })) as TrustedFormFetchResponse;
 
