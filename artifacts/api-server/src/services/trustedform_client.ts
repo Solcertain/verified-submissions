@@ -7,6 +7,29 @@ const TRUSTED_FORM_DOMAIN = "https://cert.trustedform.com";
 // window degrades to an "inconclusive" result rather than blocking the lead.
 const REQUEST_TIMEOUT_MS = 5_000;
 
+// Insights data points requested on every claim. Valid values come from the v4
+// InsightsParameters enum; only contracted properties may be queried, and the
+// account is billed per property returned. These are the ones that bear on
+// behavioural authenticity — the vendor computes them, so no per-form field
+// mapping is involved.
+const INSIGHTS_PROPERTIES = [
+  "bot_detected",
+  "form_input_method",
+  "form_input_kpm",
+  "form_input_wpm",
+  "seconds_on_page",
+  "age_seconds",
+  "is_framed",
+  "browser",
+  "os",
+  "ip",
+  "approx_ip_geo",
+  "domain",
+  "page_url",
+  "created_at",
+  "expires_at",
+] as const;
+
 interface TrustedFormFetchResponse {
   headers: { get(name: string): string | null };
   json(): Promise<unknown>;
@@ -95,11 +118,12 @@ export async function claim_certificate(
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
+        "Api-Version": "4.0",
         Authorization: `Basic ${credentials}`,
       },
-      // TrustedForm requires a Content-Type; the body itself is optional.
-      // vendor is stored alongside the claimed certificate for audit.
-      body: JSON.stringify({ vendor: "Solcertain" }),
+      // v4 selects products via operation keys in the body; without one the API
+      // answers 400 "No valid products detected".
+      body: JSON.stringify({ insights: { properties: INSIGHTS_PROPERTIES } }),
       signal: controller.signal,
     })) as TrustedFormFetchResponse;
 
