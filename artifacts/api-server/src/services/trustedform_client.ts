@@ -94,8 +94,12 @@ export async function claim_certificate(
       method: "POST",
       headers: {
         Accept: "application/json",
+        "Content-Type": "application/json",
         Authorization: `Basic ${credentials}`,
       },
+      // TrustedForm requires a Content-Type; the body itself is optional.
+      // vendor is stored alongside the claimed certificate for audit.
+      body: JSON.stringify({ vendor: "Solcertain" }),
       signal: controller.signal,
     })) as TrustedFormFetchResponse;
 
@@ -122,7 +126,7 @@ export async function claim_certificate(
           ? "Unauthorized — check ACTIVEPROSPECT_API_KEY"
           : response.status === 404
             ? "Certificate not found"
-            : `HTTP ${response.status}`;
+            : `HTTP ${response.status}: ${JSON.stringify(data).slice(0, 300)}`;
 
       logger.warn(
         { status: response.status, url: certificate_url },
