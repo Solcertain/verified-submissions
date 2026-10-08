@@ -22,9 +22,34 @@ spec. Do not "fix" code toward the master prompt by accident.
 ## Current architecture
 
 pnpm workspace monorepo, Node 24, TypeScript 5.9, Express 5, Drizzle ORM over Postgres, esbuild
-bundle. Deploys to Vercel from `artifacts/api-server` — its `vercel.json` sets the build command and
-rewrites all routes to `app.js`, which re-exports `dist/index.mjs`. The Vercel project's **Root
-Directory must be `artifacts/api-server`**, or neither file is read.
+bundle.
+
+### Deployment (live)
+
+| | |
+|---|---|
+| Stable production URL | `https://verified-submissions-api.vercel.app` |
+| Vercel project | `verified-submissions-api` under `stephens-projects-f287d3ab` |
+| Repo | `Solcertain/verified-submissions` (fork of `jwelle/verified-submissions`) |
+| Database | Neon via Vercel Marketplace; `DATABASE_URL` injected to all environments |
+
+Two settings are load-bearing and not obvious:
+
+- **Root Directory must be `artifacts/api-server`.** At the repo root Vercel never reads this
+  package's `vercel.json` and cannot find the function entry. "Include files outside the root
+  directory in the Build Step" must also stay enabled, because the build runs
+  `pnpm -w run typecheck:libs` against the workspace root one level up.
+- **No catch-all rewrite.** `vercel.json` previously rewrote every path to `/app.js`. Vercel
+  rewrites replace the request *path*, so Express received `/app.js`, matched neither `/` nor the
+  router mounted at `/api`, and every request 404'd with `Cannot GET /app.js`. Vercel's Express
+  preset routes correctly on its own — `index.ts` guards `app.listen()` behind
+  `!process.env.VERCEL` and exports the app as default. Do not reintroduce the rewrite.
+
+Per-deployment URLs are gated by Vercel SSO; the **production alias is not**, which is what lets
+Lead Prosper reach it. The application's own `x-api-key` is therefore the real access control, and
+every scoring route now enforces it — verified: `healthz` 200, while `score-lead`,
+`score-lead/from-text`, `score-and-route`, `score-and-route/from-text` and `leadprosper/pre-ping`
+all return 401 without the header.
 
 ```
 artifacts/api-server/src/
