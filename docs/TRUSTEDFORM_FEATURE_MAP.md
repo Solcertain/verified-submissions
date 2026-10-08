@@ -170,3 +170,60 @@ Beyond the spec, the API also offers signals worth using: `is_framed`, `os.is_mo
    as a QA aid with its line-format bug fixed).
 5. **Capture at scale, close to real time** — the claim window is ~72 hours, so a nightly batch
    would miss certificates.
+
+---
+
+## 6. The `verify` operation — contracted, and what it found
+
+`verify` **is** available on the account (`consent_language_acceptance_enabled: true`). Request:
+
+```json
+{"insights": {"properties": [...]},
+ "verify": {"advertiser_name": "Solar Energy Nerds",
+            "opt_in_types_allowed": ["manual", "pre-selected", "non-interactive"]}}
+```
+
+Result on a live certificate from `survey.solar-advisors.org`:
+
+```json
+"outcome": "failure",
+"reason": "Consent language not detected in the certificate. This form has not been
+           setup to allow use of One to One Consent Check. The form did not contain
+           any consent items. The form may not be set up correctly.",
+"verify": { "result": { "success": false,
+                        "form_submitted": true,
+                        "language_approved": false,
+                        "one_to_one": null,
+                        "opt_in_types_satisfied": null },
+            "languages": [],
+            "consent_language_acceptance_enabled": true }
+```
+
+`form_submitted: true` — the certificate is genuine and a form was submitted. But **no consent
+items were captured at all**, so TrustedForm cannot evaluate consent or one-to-one for it.
+
+### Read this carefully — it has two possible meanings
+
+1. The source form genuinely carries no consent language. That is a live compliance exposure.
+2. The form has consent language but has not implemented TrustedForm **tagged consent**
+   (`data-tf-element-role` attributes), so it is present on the page but invisible to `verify`.
+
+**Nothing observed so far distinguishes these.** Do not report this as a consent failure until it
+is settled.
+
+### How to settle it
+
+Send `required_scan_terms` with generic TCPA phrasing — `"prior express written consent"`,
+`"automatic telephone dialing system"` — which text-scans the page snapshot rather than relying on
+tagging. If the scan also finds nothing, reading 1 is strongly supported. If the scan finds the
+language, it is reading 2: a detection gap, and the fix is asking the publisher to tag consent.
+
+This is also why scan terms remain necessary alongside `verify`: our own form uses tagged consent,
+but certificates arriving from other domains may not, and `verify` alone cannot tell "absent" from
+"untagged".
+
+### Open question
+
+Both certificates claimed so far originated at `survey.solar-advisors.org`, not
+`solarenergynerds.com`. Whether that domain is a Solcertain property or a third-party publisher
+changes who owns the fix and how urgent it is. **Unresolved.**
