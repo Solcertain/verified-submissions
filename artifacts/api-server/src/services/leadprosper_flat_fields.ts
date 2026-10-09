@@ -163,7 +163,9 @@ export function mapToLeadProsperFlatFields(
   switch (outcome.kind) {
     case "scored":
       return build_flat(
-        score_authenticity(outcome.features),
+        score_authenticity(outcome.features, {
+          required_consent_terms: outcome.required_consent_terms,
+        }),
         outcome.parsed_lead.certificate_id,
         outcome.features.seconds_on_page,
         outcome.analysis_id,

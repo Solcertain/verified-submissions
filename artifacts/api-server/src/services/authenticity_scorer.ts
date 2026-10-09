@@ -55,10 +55,19 @@ function derive_1_10(score: number): number {
   return Math.max(1, Math.min(10, Math.ceil(score / 10)));
 }
 
-function assess_consent(f: BehaviouralFeatures): AuthenticityResult["consent"] {
-  const missing = (f.consent_terms_missing ?? []).filter((t) =>
-    (R.CORE_TCPA_TERMS as readonly string[]).includes(t),
-  );
+// required_terms are the phrases THIS campaign's disclosure is expected to
+// contain. Compliant disclosures word the same obligation differently, so
+// judging every campaign against one global list produces false failures.
+// Falls back to the defaults when a campaign declares nothing.
+function assess_consent(
+  f: BehaviouralFeatures,
+  required_terms?: string[],
+): AuthenticityResult["consent"] {
+  const required =
+    required_terms && required_terms.length > 0
+      ? required_terms
+      : (R.CORE_TCPA_TERMS as readonly string[]);
+  const missing = (f.consent_terms_missing ?? []).filter((t) => required.includes(t));
 
   // Order matters. A positive verify result is the strongest statement
   // available. Missing core phrasing is the next strongest. Everything else is
@@ -72,7 +81,15 @@ function assess_consent(f: BehaviouralFeatures): AuthenticityResult["consent"] {
   return { verdict: "NOT_EVALUATED", missing_core_terms: [] };
 }
 
-export function score_authenticity(f: BehaviouralFeatures): AuthenticityResult {
+export interface ScoreOptions {
+  // Phrases this campaign's disclosure must contain for consent to be adequate.
+  required_consent_terms?: string[];
+}
+
+export function score_authenticity(
+  f: BehaviouralFeatures,
+  options: ScoreOptions = {},
+): AuthenticityResult {
   let score = R.NEUTRAL_BASELINE;
   const risk_flags: string[] = [];
   const evidence: string[] = [];
@@ -135,7 +152,7 @@ export function score_authenticity(f: BehaviouralFeatures): AuthenticityResult {
   }
 
   // --- Consent: reported alongside, never folded into the authenticity score ---
-  const consent = assess_consent(f);
+  const consent = assess_consent(f, options.required_consent_terms);
   if (consent.verdict === "MISSING_LANGUAGE") {
     risk_flags.push("consent_language_missing");
     evidence.push(

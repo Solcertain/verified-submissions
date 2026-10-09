@@ -70,6 +70,7 @@ export type ScoreAndRouteOutcome =
       claim_result: { ok: boolean; status_code: number | null };
       parsed_lead: ParsedLeadPayload;
       features: BehaviouralFeatures;
+      required_consent_terms: string[] | undefined;
       score: ScoreResult;
       routing: RoutingResult;
       sheet_result: SheetResult;
@@ -159,7 +160,20 @@ export async function scoreAndRouteLead(
       ? (input.raw_payload["advertiser_name"] as string)
       : undefined;
 
-  const claim_result = await claim_certificate(certificate_url, { advertiser_name });
+  // Comma-separated so it can be set from a Lead Prosper data-append body,
+  // which carries flat string values.
+  const consent_terms =
+    typeof input.raw_payload?.["consent_terms"] === "string"
+      ? (input.raw_payload["consent_terms"] as string)
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : undefined;
+
+  const claim_result = await claim_certificate(certificate_url, {
+    advertiser_name,
+    scan_terms: consent_terms,
+  });
 
   if (!claim_result.ok) {
     return {
@@ -268,6 +282,7 @@ export async function scoreAndRouteLead(
     claim_result: { ok: claim_result.ok, status_code: claim_result.status_code },
     parsed_lead: parsed_lead_payload,
     features,
+    required_consent_terms: consent_terms,
     score,
     routing,
     sheet_result,

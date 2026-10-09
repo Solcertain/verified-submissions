@@ -55,7 +55,7 @@ function build_verify_params(advertiser_name?: string): Record<string, unknown> 
 // "consent language present but untagged" — two findings with very different
 // remediations. Broad deliberately: the per-term found/not_found breakdown shows
 // what a partner's page actually says.
-const CONSENT_SCAN_TERMS = [
+const DEFAULT_SCAN_TERMS = [
   "prior express written consent",
   "automatic telephone dialing system",
   "autodialed",
@@ -66,6 +66,17 @@ const CONSENT_SCAN_TERMS = [
   "Terms",
   "consent",
 ] as const;
+
+// Union of the diagnostic defaults and whatever the campaign declares, so the
+// per-term breakdown stays broad while the pass/fail judgement stays specific.
+function build_scan_terms(extra?: string[]): string[] {
+  const seen = new Set<string>(DEFAULT_SCAN_TERMS as readonly string[]);
+  for (const t of extra ?? []) {
+    const trimmed = t.trim();
+    if (trimmed) seen.add(trimmed);
+  }
+  return [...seen];
+}
 
 interface TrustedFormFetchResponse {
   headers: { get(name: string): string | null };
@@ -122,6 +133,12 @@ export function normalize_certificate_url(url: string): string {
 export interface ClaimOptions {
   // The advertiser named in the consent disclosure for THIS campaign.
   advertiser_name?: string;
+  // Phrases this campaign's disclosure is expected to contain. Compliant
+  // disclosures word the same obligation differently — one says "automatic
+  // telephone dialing system", another "automated technology" — so a single
+  // global list produces false failures on every campaign it was not written
+  // for. Scanned IN ADDITION to the diagnostic defaults.
+  scan_terms?: string[];
 }
 
 export async function claim_certificate(
@@ -169,7 +186,7 @@ export async function claim_certificate(
       body: JSON.stringify({
         insights: {
           properties: INSIGHTS_PROPERTIES,
-          scans: { required: CONSENT_SCAN_TERMS },
+          scans: { required: build_scan_terms(options.scan_terms) },
         },
         verify: build_verify_params(options.advertiser_name),
       }),
