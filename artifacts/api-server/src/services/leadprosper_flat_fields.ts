@@ -1,5 +1,6 @@
 import type { ScoreAndRouteOutcome } from "./score_and_route_service.js";
 import { score_authenticity, type AuthenticityResult } from "./authenticity_scorer.js";
+import type { BehaviouralFeatures } from "./feature_extractor.js";
 import { MODEL_VERSION as ENGINE_VERSION } from "../config/authenticity_rules.js";
 
 // Version stamp returned to Lead Prosper so responses are traceable to a model rev.
@@ -138,6 +139,24 @@ function inconclusive_response(reason: string): LeadProsperFlatResponse {
   };
 }
 
+// Cached parsed_lead is an untyped JSON blob. Since 0.2-insights it is written as
+// { legacy, features }; anything older has no features and must not be guessed at.
+function read_stored_features(value: unknown): BehaviouralFeatures | null {
+  const blob = (value ?? {}) as Record<string, unknown>;
+  const features = blob["features"];
+  if (typeof features !== "object" || features === null) return null;
+  // A features object always carries parse_notes; its absence means this is some
+  // other shape and must not be treated as a scoreable result.
+  if (!Array.isArray((features as Record<string, unknown>)["parse_notes"])) return null;
+  return features as unknown as BehaviouralFeatures;
+}
+
+function stored_certificate_id(value: unknown): string {
+  const blob = (value ?? {}) as Record<string, unknown>;
+  const legacy = (blob["legacy"] ?? blob) as Record<string, unknown>;
+  return typeof legacy["certificate_id"] === "string" ? (legacy["certificate_id"] as string) : "";
+}
+
 export function mapToLeadProsperFlatFields(
   outcome: ScoreAndRouteOutcome,
 ): LeadProsperFlatResponse {
@@ -153,10 +172,24 @@ export function mapToLeadProsperFlatFields(
     // Cached rows were written under an earlier model whose scores are not
     // comparable to this one, so replaying them would silently mix model
     // versions. Re-claim with force=true to rescore a cached certificate.
-    case "cached":
-      return inconclusive_response(
-        `Stored analysis predates model ${MODEL_VERSION}; re-claim with force=true to rescore.`,
+    // A cached row is rescored from its STORED features rather than replaying a
+    // stored score, so dedupe still saves a metered claim while the result always
+    // reflects the current model. Rows written before features were persisted
+    // have none, and those stay honestly inconclusive rather than being guessed at.
+    case "cached": {
+      const stored = read_stored_features(outcome.parsed_lead);
+      if (!stored) {
+        return inconclusive_response(
+          `Stored analysis predates model ${MODEL_VERSION} and carries no features; re-claim with force=true to rescore.`,
+        );
+      }
+      return build_flat(
+        score_authenticity(stored),
+        stored_certificate_id(outcome.parsed_lead),
+        stored.seconds_on_page,
+        outcome.analysis_id,
       );
+    }
 
     case "claim_failed":
       return inconclusive_response(outcome.error);
