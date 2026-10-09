@@ -151,7 +151,15 @@ export async function scoreAndRouteLead(
   }
 
   // Claim the certificate from TrustedForm.
-  const claim_result = await claim_certificate(certificate_url);
+  // advertiser_name is per-campaign and arrives in the request body, so the
+  // consent one_to_one check is measured against the right company. Absent, the
+  // claim omits it rather than defaulting to another campaign's advertiser.
+  const advertiser_name =
+    typeof input.raw_payload?.["advertiser_name"] === "string"
+      ? (input.raw_payload["advertiser_name"] as string)
+      : undefined;
+
+  const claim_result = await claim_certificate(certificate_url, { advertiser_name });
 
   if (!claim_result.ok) {
     return {

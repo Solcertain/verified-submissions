@@ -31,18 +31,23 @@ const INSIGHTS_PROPERTIES = [
 ] as const;
 
 // Verify checks consent against the requirements configured on the ActiveProspect
-// account, which suits this form: it uses TrustedForm tagged consent
-// (use_tagged_consent=true with data-tf-element-role attributes) rather than
-// relying on a text scan of the disclosure. advertiser_name is optional overall
-// but is what populates the one_to_one result.
+// account. advertiser_name is what populates the one_to_one result, and it is
+// per-campaign: the advertiser named in a solar disclosure is not the advertiser
+// named in a medical one.
 //
-// opt_in_types_allowed is deliberately permissive for now. This form's pattern is
-// consent-by-submission, so tightening it is a compliance decision to make against
-// real results rather than a guess.
-const VERIFY_PARAMS = {
-  advertiser_name: "Solar Energy Nerds",
-  opt_in_types_allowed: ["manual", "pre-selected", "non-interactive"],
-} as const;
+// When the caller does not supply it we OMIT it rather than defaulting. A wrong
+// advertiser name would produce a confident one_to_one verdict measured against
+// the wrong company, which is worse than returning null.
+//
+// opt_in_types_allowed stays permissive for now. Tightening it is a compliance
+// decision to make against real results rather than a guess.
+function build_verify_params(advertiser_name?: string): Record<string, unknown> {
+  const params: Record<string, unknown> = {
+    opt_in_types_allowed: ["manual", "pre-selected", "non-interactive"],
+  };
+  if (advertiser_name) params["advertiser_name"] = advertiser_name;
+  return params;
+}
 
 // Page-snapshot text scan, run alongside verify. verify only sees TrustedForm
 // tagged consent (data-tf-element-role); a partner form carrying the disclosure
@@ -114,8 +119,14 @@ export function normalize_certificate_url(url: string): string {
   }
 }
 
+export interface ClaimOptions {
+  // The advertiser named in the consent disclosure for THIS campaign.
+  advertiser_name?: string;
+}
+
 export async function claim_certificate(
   certificate_url: string,
+  options: ClaimOptions = {},
 ): Promise<ClaimResult> {
   // Reject any URL that is not a TrustedForm cert URL to prevent credential leakage
   if (!is_valid_trustedform_url(certificate_url)) {
@@ -160,7 +171,7 @@ export async function claim_certificate(
           properties: INSIGHTS_PROPERTIES,
           scans: { required: CONSENT_SCAN_TERMS },
         },
-        verify: VERIFY_PARAMS,
+        verify: build_verify_params(options.advertiser_name),
       }),
       signal: controller.signal,
     })) as TrustedFormFetchResponse;
