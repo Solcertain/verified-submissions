@@ -1,5 +1,6 @@
 import type { BehaviouralFeatures } from "./feature_extractor.js";
 import * as R from "../config/authenticity_rules.js";
+import { is_page_mismatch } from "./certificate_integrity.js";
 
 // Deterministic behavioural authenticity model over TrustedForm v4 Insights.
 //
@@ -88,6 +89,11 @@ function assess_consent(
 export interface ScoreOptions {
   // Phrases this campaign's disclosure must contain for consent to be adequate.
   required_consent_terms?: string[];
+  // This certificate was already claimed for a different lead.
+  certificate_reused?: boolean;
+  // The lead's landing page as reported by Lead Prosper, compared against the
+  // page TrustedForm actually recorded.
+  landing_page_url?: string;
 }
 
 export function score_authenticity(
@@ -173,6 +179,20 @@ export function score_authenticity(
   } else if (consent.verdict === "VERIFIED") {
     score += R.CONSENT_VERIFIED;
     evidence.push("Consent verified by TrustedForm.");
+  }
+
+  // --- Certificate integrity ---
+  if (options.certificate_reused) {
+    score -= R.CERTIFICATE_REUSED;
+    risk_flags.push("certificate_reused");
+    evidence.push("This certificate was already claimed for a different lead.");
+  }
+  if (is_page_mismatch(f.page_url, options.landing_page_url)) {
+    score -= R.CERTIFICATE_PAGE_MISMATCH;
+    risk_flags.push("certificate_page_mismatch");
+    evidence.push(
+      `Certificate was captured on ${f.page_url}, not the lead's landing page ${options.landing_page_url}.`,
+    );
   }
 
   score = clamp(score);

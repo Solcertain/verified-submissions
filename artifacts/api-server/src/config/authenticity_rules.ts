@@ -49,6 +49,14 @@ export const LONG_SESSION_SECONDS = 180;
 export const CONSENT_VERIFIED = 10;
 export const CONSENT_LANGUAGE_MISSING = 15;
 
+// --- Certificate integrity ---
+// A certificate presented for a different lead than the one that first claimed
+// it, or captured on a different site than the lead's landing page, does not
+// evidence consent for THIS lead. Either sends the lead to review regardless of
+// score; the penalty makes it visible in vs_score as well.
+export const CERTIFICATE_REUSED = 30;
+export const CERTIFICATE_PAGE_MISMATCH = 20;
+
 // --- Classification bands, applied to the 0-100 authenticity score ---
 export const STRONG_HUMAN_MIN = 80;
 export const REAL_HUMAN_MIN = 62;

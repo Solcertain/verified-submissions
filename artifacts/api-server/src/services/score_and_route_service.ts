@@ -18,6 +18,7 @@ import {
 } from "./routing_engine.js";
 import { append_review_row } from "./google_sheets.js";
 import { dispatch_outbound_webhook } from "./webhook_dispatcher.js";
+import { is_certificate_reused, read_landing_page_url } from "./certificate_integrity.js";
 import {
   save_submission,
   get_submission_by_certificate,
@@ -58,6 +59,8 @@ export type ScoreAndRouteOutcome =
       parsed_lead: unknown;
       score: unknown;
       required_consent_terms: string[] | undefined;
+      certificate_reused: boolean;
+      landing_page_url: string | undefined;
     }
   | {
       kind: "claim_failed";
@@ -72,6 +75,8 @@ export type ScoreAndRouteOutcome =
       parsed_lead: ParsedLeadPayload;
       features: BehaviouralFeatures;
       required_consent_terms: string[] | undefined;
+      certificate_reused: boolean;
+      landing_page_url: string | undefined;
       score: ScoreResult;
       routing: RoutingResult;
       sheet_result: SheetResult;
@@ -148,6 +153,8 @@ export async function scoreAndRouteLead(
           .filter(Boolean)
       : undefined;
 
+  const landing_page_url = read_landing_page_url(input.raw_payload);
+
   // Dedup cache — return a previously stored result unless forced.
   if (!input.force) {
     const existing = await get_submission_by_certificate(certificate_url, undefined);
@@ -160,6 +167,13 @@ export async function scoreAndRouteLead(
         parsed_lead: existing.parsed_submission_json,
         score: existing.score_json,
         required_consent_terms: consent_terms,
+        // A cache hit is either a retry of the same lead or the certificate
+        // being presented for a different one; only the stored request can tell.
+        certificate_reused: is_certificate_reused(
+          existing.raw_payload_json as Record<string, unknown> | null,
+          input.raw_payload,
+        ),
+        landing_page_url,
       };
     }
   }
@@ -286,6 +300,8 @@ export async function scoreAndRouteLead(
     parsed_lead: parsed_lead_payload,
     features,
     required_consent_terms: consent_terms,
+    certificate_reused: false,
+    landing_page_url,
     score,
     routing,
     sheet_result,

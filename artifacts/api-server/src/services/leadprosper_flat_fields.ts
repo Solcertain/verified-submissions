@@ -54,7 +54,12 @@ export function mapScoreToOneToTen(score: number): number {
 // consent is reported separately, because a real human on a non-compliant
 // partner form is neither "approved" nor "a bot", and collapsing the two would
 // force a choice between two true statements.
+// A certificate that does not belong to this lead proves nothing about its
+// consent, so those flags force review even when the human evidence is strong.
+const REVIEW_FLAGS = ["certificate_reused", "certificate_page_mismatch"];
+
 function status_for(result: AuthenticityResult): LeadProsperFlatResponse["vs_status"] {
+  const integrity_failed = result.risk_flags.some((f) => REVIEW_FLAGS.includes(f));
   switch (result.classification) {
     case "BOT_OR_SCRIPT":
     case "AUTOFILL_OR_HIGH_RISK_AUTOMATION":
@@ -64,7 +69,7 @@ function status_for(result: AuthenticityResult): LeadProsperFlatResponse["vs_sta
       return "review";
     case "REAL_HUMAN":
     case "STRONG_REAL_HUMAN":
-      return "approved";
+      return integrity_failed ? "review" : "approved";
   }
 }
 
@@ -172,6 +177,7 @@ export function mapToLeadProsperFlatFields(
       return build_flat(
         score_authenticity(outcome.features, {
           required_consent_terms: outcome.required_consent_terms,
+          landing_page_url: outcome.landing_page_url,
         }),
         outcome.parsed_lead.certificate_id || certificate_id_from_url(outcome.certificate_url),
         outcome.features.seconds_on_page,
@@ -195,6 +201,8 @@ export function mapToLeadProsperFlatFields(
       return build_flat(
         score_authenticity(stored, {
           required_consent_terms: outcome.required_consent_terms,
+          certificate_reused: outcome.certificate_reused,
+          landing_page_url: outcome.landing_page_url,
         }),
         stored_certificate_id(outcome.parsed_lead) ||
           certificate_id_from_url(outcome.certificate_url),
