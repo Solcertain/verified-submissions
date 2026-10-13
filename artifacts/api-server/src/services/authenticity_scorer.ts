@@ -17,7 +17,11 @@ import * as R from "../config/authenticity_rules.js";
 //   sellability  — is the data usable (NOT scored here; that is Lead Prosper's job)
 //
 // Collapsing them loses the distinction between "a bot" and "a real person on a
-// badly built partner form", which need opposite responses.
+// badly built partner form", which need opposite responses. Since 0.3 consent
+// also weighs on the score: missing language keeps a sustained-session human
+// out of STRONG_REAL_HUMAN, and only a human whose behavioural evidence was
+// already thin (session under 30s) can be pushed into review by it. The
+// consent verdict is still reported separately.
 
 export type Classification =
   | "BOT_OR_SCRIPT"
@@ -143,7 +147,12 @@ export function score_authenticity(
       risk_flags.push("brief_session");
       evidence.push(`Brief ${secs}s session.`);
     } else if (secs >= R.SUSTAINED_SESSION_SECONDS) {
-      score += R.SUSTAINED_SESSION;
+      const ramp = Math.min(
+        1,
+        (secs - R.SUSTAINED_SESSION_SECONDS) /
+          (R.LONG_SESSION_SECONDS - R.SUSTAINED_SESSION_SECONDS),
+      );
+      score += R.SUSTAINED_SESSION + ramp * (R.SUSTAINED_SESSION_MAX - R.SUSTAINED_SESSION);
       evidence.push(`Sustained ${secs}s session.`);
     } else if (secs >= R.MODERATE_SESSION_SECONDS) {
       score += R.MODERATE_SESSION;
@@ -151,14 +160,18 @@ export function score_authenticity(
     }
   }
 
-  // --- Consent: reported alongside, never folded into the authenticity score ---
+  // --- Consent: still reported as its own verdict, but now also moves the
+  // score, so a deficient disclosure is visible in vs_score and drops the lead
+  // out of STRONG_REAL_HUMAN.
   const consent = assess_consent(f, options.required_consent_terms);
   if (consent.verdict === "MISSING_LANGUAGE") {
+    score -= R.CONSENT_LANGUAGE_MISSING;
     risk_flags.push("consent_language_missing");
     evidence.push(
       `Consent language is missing required phrasing: ${consent.missing_core_terms.join(", ")}.`,
     );
   } else if (consent.verdict === "VERIFIED") {
+    score += R.CONSENT_VERIFIED;
     evidence.push("Consent verified by TrustedForm.");
   }
 

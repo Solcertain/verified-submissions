@@ -57,6 +57,7 @@ export type ScoreAndRouteOutcome =
       analysis_id: string | null;
       parsed_lead: unknown;
       score: unknown;
+      required_consent_terms: string[] | undefined;
     }
   | {
       kind: "claim_failed";
@@ -136,6 +137,17 @@ export async function scoreAndRouteLead(
     };
   }
 
+  // Parsed before the cache check so a cached rescore is judged against the same
+  // campaign terms as a fresh claim. Comma-separated so it can be set from a Lead Prosper data-append body,
+  // which carries flat string values.
+  const consent_terms =
+    typeof input.raw_payload?.["consent_terms"] === "string"
+      ? (input.raw_payload["consent_terms"] as string)
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : undefined;
+
   // Dedup cache — return a previously stored result unless forced.
   if (!input.force) {
     const existing = await get_submission_by_certificate(certificate_url, undefined);
@@ -147,6 +159,7 @@ export async function scoreAndRouteLead(
         analysis_id: existing.id ?? null,
         parsed_lead: existing.parsed_submission_json,
         score: existing.score_json,
+        required_consent_terms: consent_terms,
       };
     }
   }
@@ -158,16 +171,6 @@ export async function scoreAndRouteLead(
   const advertiser_name =
     typeof input.raw_payload?.["advertiser_name"] === "string"
       ? (input.raw_payload["advertiser_name"] as string)
-      : undefined;
-
-  // Comma-separated so it can be set from a Lead Prosper data-append body,
-  // which carries flat string values.
-  const consent_terms =
-    typeof input.raw_payload?.["consent_terms"] === "string"
-      ? (input.raw_payload["consent_terms"] as string)
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean)
       : undefined;
 
   const claim_result = await claim_certificate(certificate_url, {

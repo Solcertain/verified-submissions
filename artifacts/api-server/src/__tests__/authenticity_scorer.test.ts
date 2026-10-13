@@ -123,6 +123,43 @@ describe("consent is a separate axis from authenticity", () => {
   });
 });
 
+describe("score spreads across real humans", () => {
+  const human = (secs: number, o: Partial<BehaviouralFeatures> = {}) =>
+    score_authenticity(
+      F({ bot_detected: false, input_methods: ["typing"], typed: true, seconds_on_page: secs, ...o }),
+    );
+
+  it("rewards longer sustained sessions instead of capping at 60s", () => {
+    expect(human(60).score).toBe(80);
+    expect(human(120).score).toBe(84);
+    expect(human(180).score).toBe(88);
+    expect(human(600).score).toBe(88);
+  });
+
+  it("does not give every sustained human the same score", () => {
+    const scores = new Set([101, 153, 292].map((s) => human(s).score));
+    expect(scores.size).toBeGreaterThan(1);
+  });
+
+  it("adds verified consent on top, reaching the 90s", () => {
+    const r = human(180, { consent_verified: true });
+    expect(r.score).toBe(98);
+    expect(r.classification).toBe("STRONG_REAL_HUMAN");
+  });
+
+  it("keeps a missing-consent lead out of STRONG_REAL_HUMAN at any session length", () => {
+    const missing = ["prior express written consent"];
+    const r = human(600, { consent_verified: false, consent_terms_missing: missing });
+    expect(r.score).toBe(73);
+    expect(r.classification).toBe("REAL_HUMAN");
+    expect(r.risk_flags).toContain("consent_language_missing");
+  });
+
+  it("leaves not-evaluated consent neutral", () => {
+    expect(human(180, { consent_verified: null }).score).toBe(88);
+  });
+});
+
 describe("confidence reflects evidence, not score", () => {
   it("drops to MEDIUM when signals disagree", () => {
     const r = score_authenticity(
@@ -150,7 +187,7 @@ describe("determinism and derived values", () => {
 
   it("scores the real captured certificate as a human with deficient consent", () => {
     const r = score_authenticity(features);
-    expect(r.classification).toBe("STRONG_REAL_HUMAN");
+    expect(r.classification).toBe("REAL_HUMAN");
     expect(r.confidence).toBe("HIGH");
     expect(r.consent.verdict).toBe("MISSING_LANGUAGE");
   });

@@ -7,7 +7,7 @@
 // Treat every number as provisional until the distributions in
 // docs/TRUSTEDFORM_FEATURE_MAP.md have been reviewed against real traffic.
 
-export const MODEL_VERSION = "0.2-insights";
+export const MODEL_VERSION = "0.3-insights";
 
 // The score starts neutral and evidence moves it. This is deliberate: the
 // previous model started at 100 and deducted, which meant a certificate we knew
@@ -18,7 +18,11 @@ export const NEUTRAL_BASELINE = 50;
 // --- Authenticity evidence (positive) ---
 export const BOT_CHECK_PASSED = 8;
 export const TYPING_OBSERVED = 14;
-export const SUSTAINED_SESSION = 10; // seconds_on_page >= SUSTAINED_SESSION_SECONDS
+// A sustained session earns SUSTAINED_SESSION, then ramps linearly up to
+// SUSTAINED_SESSION_MAX at LONG_SESSION_SECONDS. 0.2 awarded a flat +10 at 60s,
+// so every real human landed on exactly 82 and the score carried no spread.
+export const SUSTAINED_SESSION = 8; // seconds_on_page >= SUSTAINED_SESSION_SECONDS
+export const SUSTAINED_SESSION_MAX = 16; // seconds_on_page >= LONG_SESSION_SECONDS
 export const MODERATE_SESSION = 5; // seconds_on_page >= MODERATE_SESSION_SECONDS
 
 // --- Authenticity evidence (negative) ---
@@ -33,6 +37,17 @@ export const INSTANT_SESSION_SECONDS = 5;
 export const BRIEF_SESSION_SECONDS = 15;
 export const MODERATE_SESSION_SECONDS = 30;
 export const SUSTAINED_SESSION_SECONDS = 60;
+export const LONG_SESSION_SECONDS = 180;
+
+// --- Consent weighting ---
+// 0.2 reported consent alongside the score without moving it, so a lead whose
+// disclosure lacked the core TCPA phrasing scored the same as one that passed.
+// Missing language is sized so the best possible behavioural lead
+// (50+8+14+16-15 = 73) falls out of STRONG_REAL_HUMAN into REAL_HUMAN: still
+// approved, but visibly distinguishable. Not-evaluated stays neutral, because
+// "we did not check" is not a failure.
+export const CONSENT_VERIFIED = 10;
+export const CONSENT_LANGUAGE_MISSING = 15;
 
 // --- Classification bands, applied to the 0-100 authenticity score ---
 export const STRONG_HUMAN_MIN = 80;

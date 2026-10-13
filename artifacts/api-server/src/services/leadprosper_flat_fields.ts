@@ -157,6 +157,13 @@ function stored_certificate_id(value: unknown): string {
   return typeof legacy["certificate_id"] === "string" ? (legacy["certificate_id"] as string) : "";
 }
 
+// The v4 claim response carries no top-level id, so the parsed certificate_id
+// comes back empty. The id is the certificate URL's path, which is always known.
+export function certificate_id_from_url(url: string): string {
+  const match = /^https:\/\/cert\.trustedform\.com\/([0-9a-f]+)/i.exec(url);
+  return match ? match[1] : "";
+}
+
 export function mapToLeadProsperFlatFields(
   outcome: ScoreAndRouteOutcome,
 ): LeadProsperFlatResponse {
@@ -166,7 +173,7 @@ export function mapToLeadProsperFlatFields(
         score_authenticity(outcome.features, {
           required_consent_terms: outcome.required_consent_terms,
         }),
-        outcome.parsed_lead.certificate_id,
+        outcome.parsed_lead.certificate_id || certificate_id_from_url(outcome.certificate_url),
         outcome.features.seconds_on_page,
         outcome.analysis_id,
       );
@@ -186,8 +193,11 @@ export function mapToLeadProsperFlatFields(
         );
       }
       return build_flat(
-        score_authenticity(stored),
-        stored_certificate_id(outcome.parsed_lead),
+        score_authenticity(stored, {
+          required_consent_terms: outcome.required_consent_terms,
+        }),
+        stored_certificate_id(outcome.parsed_lead) ||
+          certificate_id_from_url(outcome.certificate_url),
         stored.seconds_on_page,
         outcome.analysis_id,
       );

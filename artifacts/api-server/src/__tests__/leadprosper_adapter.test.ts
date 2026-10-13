@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { normalizeLeadProsperPayload } from "../services/leadprosper_adapter.js";
+import { certificate_id_from_url } from "../services/leadprosper_flat_fields.js";
 
 const HASH = "a".repeat(40);
 const URL = `https://cert.trustedform.com/${HASH}`;
@@ -55,5 +56,15 @@ describe("normalizeLeadProsperPayload", () => {
   it("ignores empty-string certificate values and falls through", () => {
     const { certificate_url } = normalizeLeadProsperPayload({ certificate_url: "  ", tf_cert: URL });
     expect(certificate_url).toBe(URL);
+  });
+});
+
+describe("certificate_id_from_url", () => {
+  it("reads the certificate id from the cert URL path", () => {
+    expect(certificate_id_from_url(URL)).toBe(HASH);
+  });
+
+  it("returns an empty string for a non-TrustedForm URL", () => {
+    expect(certificate_id_from_url("https://example.com/abc")).toBe("");
   });
 });
