@@ -126,3 +126,21 @@ describe("Lead Prosper status", () => {
     expect(cached({}).vs_status).toBe("approved");
   });
 });
+
+describe("synthetic typing forces review", () => {
+  it("sends a strong-scoring lead with synthetic typing to review", () => {
+    const r = mapToLeadProsperFlatFields({
+      kind: "cached",
+      certificate_url: "https://cert.trustedform.com/ba9b142a1006b180553ad5052216b188cc147794",
+      stored_at: null,
+      analysis_id: null,
+      parsed_lead: { legacy: {}, features: strong_human({ form_input_kpm: 0, consent_verified: true }) },
+      score: null,
+      required_consent_terms: undefined,
+      certificate_reused: false,
+      landing_page_url: undefined,
+    });
+    expect(r.vs_risk_flags).toContain("synthetic_typing");
+    expect(r.vs_status).toBe("review");
+  });
+});

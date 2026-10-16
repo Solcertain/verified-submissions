@@ -59,6 +59,21 @@ export const CONSENT_LANGUAGE_MISSING = 15;
 export const SUPERHUMAN_TYPING_KPM = 600;
 export const SUPERHUMAN_TYPING = 15;
 
+// --- Synthetic typing ---
+// Text that TrustedForm reports as typed but that arrived with no keystrokes, or
+// with more words than keystrokes, was injected rather than typed: a person
+// cannot produce either. Every one of 64 real certificates in the Oct 2026
+// baseline had kpm > 0 and a wpm/kpm ratio of 0.06-0.95. The confirmed AI
+// browser agent (Oct 16) had kpm 0 and wpm 2070. It forces review rather than
+// reject while the evidence rests on a single confirmed agent.
+export const SYNTHETIC_TYPING = 40;
+
+// --- Automation environment ---
+// Desktop Linux plus an IP that geolocates only to a country (no state) is the
+// shape of a cloud-hosted browser. Neither half is damning alone, so this is a
+// moderate penalty with no forced review. 0 of 64 baseline certificates matched.
+export const AUTOMATION_ENVIRONMENT = 15;
+
 // --- Certificate age at claim ---
 // We claim within seconds of submission, so a certificate's age at claim is how
 // long ago the consent happened. Our own form shows 2-13s, or ~5 minutes on

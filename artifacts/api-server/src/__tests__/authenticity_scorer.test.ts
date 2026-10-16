@@ -3,6 +3,7 @@ import { score_authenticity } from "../services/authenticity_scorer.js";
 import { extract_features, empty_features } from "../services/feature_extractor.js";
 import type { BehaviouralFeatures } from "../services/feature_extractor.js";
 import real_claim from "./fixtures/claim_with_scans.json";
+import ai_agent from "./fixtures/ai_agent_chatgpt_2026-10-16.json";
 
 // Covers the scenarios required by the MVP spec. The engine is pure, so none of
 // these touch the network, the database or the clock.
@@ -242,5 +243,47 @@ describe("stale certificate threshold", () => {
     );
     expect(r.risk_flags).toContain("stale_certificate");
     expect(r.evidence.join(" ")).toContain("53 minutes old");
+  });
+});
+
+// A confirmed AI browser agent (ChatGPT agent) that scored 98 under 0.3: real
+// Chrome, so TrustedForm's bot check passed; slow, so the session maxed out; on
+// our own form, so consent verified. It is caught only by what it could not fake.
+describe("AI browser agent", () => {
+  const agent = extract_features(ai_agent);
+
+  it("is caught by synthetic typing and its environment", () => {
+    const r = score_authenticity(agent);
+    expect(r.risk_flags).toEqual(
+      expect.arrayContaining(["synthetic_typing", "automation_environment"]),
+    );
+    expect(r.score).toBe(43);
+    expect(r.classification).not.toMatch(/REAL_HUMAN/);
+  });
+
+  it("flags words outnumbering keystrokes", () => {
+    const r = score_authenticity(
+      F({ bot_detected: false, input_methods: ["typing"], typed: true, form_input_kpm: 120, form_input_wpm: 300 }),
+    );
+    expect(r.risk_flags).toContain("synthetic_typing");
+  });
+
+  it("leaves the highest real wpm/kpm ratio observed (0.95) alone", () => {
+    const r = score_authenticity(
+      F({ bot_detected: false, input_methods: ["typing"], typed: true, form_input_kpm: 100, form_input_wpm: 95 }),
+    );
+    expect(r.risk_flags).not.toContain("synthetic_typing");
+  });
+
+  it("does not flag Linux desktop when the IP resolves to a state", () => {
+    const r = score_authenticity(
+      F({ os_name: "Linux", is_mobile: false, geo_country_code: "US", geo_state: "Ohio" }),
+    );
+    expect(r.risk_flags).not.toContain("automation_environment");
+  });
+
+  it("does not flag Linux desktop when no geo came back at all", () => {
+    const r = score_authenticity(F({ os_name: "Linux", is_mobile: false }));
+    expect(r.risk_flags).not.toContain("automation_environment");
   });
 });

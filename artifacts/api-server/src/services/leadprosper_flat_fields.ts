@@ -55,8 +55,9 @@ export function mapScoreToOneToTen(score: number): number {
 // partner form is neither "approved" nor "a bot", and collapsing the two would
 // force a choice between two true statements.
 // A certificate that does not belong to this lead proves nothing about its
-// consent, so those flags force review even when the human evidence is strong.
-const REVIEW_FLAGS = ["certificate_reused", "certificate_page_mismatch"];
+// consent, and typing no keystrokes could have produced means no person typed;
+// those flags force review even when the other evidence is strong.
+const REVIEW_FLAGS = ["certificate_reused", "certificate_page_mismatch", "synthetic_typing"];
 
 function status_for(result: AuthenticityResult): LeadProsperFlatResponse["vs_status"] {
   const integrity_failed = result.risk_flags.some((f) => REVIEW_FLAGS.includes(f));

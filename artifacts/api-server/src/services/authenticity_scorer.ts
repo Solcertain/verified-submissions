@@ -149,6 +149,35 @@ export function score_authenticity(
     );
   }
 
+  // --- Synthetic typing: typed text that no keystrokes could have produced ---
+  if (f.typed === true && f.form_input_kpm !== null) {
+    const kpm = f.form_input_kpm;
+    const wpm = f.form_input_wpm;
+    if (kpm === 0 || (wpm !== null && wpm > kpm)) {
+      score -= R.SYNTHETIC_TYPING;
+      risk_flags.push("synthetic_typing");
+      evidence.push(
+        kpm === 0
+          ? "Text was entered as typing but with zero keystrokes — a person cannot type without pressing keys."
+          : `More words (${Math.round(wpm!)}/min) than keystrokes (${Math.round(kpm)}/min) — impossible for real typing.`,
+      );
+    }
+  }
+
+  // --- Automation environment: the shape of a cloud-hosted browser ---
+  if (
+    f.os_name === "Linux" &&
+    f.is_mobile === false &&
+    f.geo_country_code !== null &&
+    f.geo_state === null
+  ) {
+    score -= R.AUTOMATION_ENVIRONMENT;
+    risk_flags.push("automation_environment");
+    evidence.push(
+      "Desktop Linux on an IP that locates only to a country — typical of a cloud-hosted browser, rare for consumers.",
+    );
+  }
+
   // --- Session duration ---
   const secs = f.seconds_on_page;
   if (secs !== null) {
