@@ -7,7 +7,7 @@
 // Treat every number as provisional until the distributions in
 // docs/TRUSTEDFORM_FEATURE_MAP.md have been reviewed against real traffic.
 
-export const MODEL_VERSION = "0.3-insights";
+export const MODEL_VERSION = "0.4-insights";
 
 // The score starts neutral and evidence moves it. This is deliberate: the
 // previous model started at 100 and deducted, which meant a certificate we knew
@@ -49,6 +49,24 @@ export const LONG_SESSION_SECONDS = 180;
 export const CONSENT_VERIFIED = 10;
 export const CONSENT_LANGUAGE_MISSING = 15;
 
+// --- Typing speed ---
+// form_input_kpm was left unscored because the first sample looked meaningless
+// (9651 kpm). That sample was a partner certificate. Across a week of real
+// traffic our own form ranged 38-280 kpm, while partner certificates showed 361,
+// 438, 1572 and 9652. A 100 wpm typist is ~500 kpm, so the threshold sits well
+// above anything a person sustains; it catches scripted or tool-driven input,
+// not fast humans.
+export const SUPERHUMAN_TYPING_KPM = 600;
+export const SUPERHUMAN_TYPING = 15;
+
+// --- Certificate age at claim ---
+// We claim within seconds of submission, so a certificate's age at claim is how
+// long ago the consent happened. Our own form shows 2-13s, or ~5 minutes on
+// delayed posts (oldest 348s); partner certificates arrived 53 minutes and 22
+// hours old. Thirty minutes is five times the oldest legitimate path observed.
+export const STALE_CERTIFICATE_SECONDS = 1800;
+export const STALE_CERTIFICATE = 15;
+
 // --- Certificate integrity ---
 // A certificate presented for a different lead than the one that first claimed
 // it, or captured on a different site than the lead's landing page, does not
@@ -85,9 +103,8 @@ export const CORE_TCPA_TERMS = [
 
 // Deliberately NOT scored, and deliberately listed so the omissions are visible:
 //
-// - form_input_kpm / form_input_wpm: observed values are not physically
-//   meaningful as named (9651 kpm over a 133s session) and the ratio between
-//   them is not constant, so no threshold can be trusted yet.
+// - form_input_wpm: kpm is scored (see SUPERHUMAN_TYPING_KPM); wpm carries the
+//   same information less directly and is not scored separately.
 // - is_framed: legitimate embedded forms are framed constantly. On its own it
 //   carries no signal; it is reported for context only.
 // - Lead completeness (missing name/address/employee count): the API returns no

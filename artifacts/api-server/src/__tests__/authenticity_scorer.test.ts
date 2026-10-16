@@ -185,10 +185,62 @@ describe("determinism and derived values", () => {
     expect(r.score_1_10).toBe(Math.max(1, Math.min(10, Math.ceil(r.score / 10))));
   });
 
-  it("scores the real captured certificate as a human with deficient consent", () => {
+  // This is the partner certificate later found recycled onto other leads: 9652
+  // kpm, claimed 22 hours after capture. Since 0.4 those signals count.
+  it("scores the real captured certificate as a lead-farm typer with deficient consent", () => {
     const r = score_authenticity(features);
-    expect(r.classification).toBe("REAL_HUMAN");
+    expect(r.classification).toBe("LEAD_FARM_HUMAN_TYPER");
+    expect(r.risk_flags).toEqual(
+      expect.arrayContaining(["superhuman_typing_speed", "stale_certificate"]),
+    );
     expect(r.confidence).toBe("HIGH");
     expect(r.consent.verdict).toBe("MISSING_LANGUAGE");
+  });
+});
+
+describe("typing speed and certificate age", () => {
+  const human = (o: Partial<BehaviouralFeatures> = {}) =>
+    score_authenticity(
+      F({ bot_detected: false, input_methods: ["typing"], typed: true, seconds_on_page: 180, ...o }),
+    );
+
+  it("leaves fast but human typing alone", () => {
+    const r = human({ form_input_kpm: 280 });
+    expect(r.score).toBe(88);
+    expect(r.risk_flags).not.toContain("superhuman_typing_speed");
+  });
+
+  it("flags typing faster than a person can sustain", () => {
+    const r = human({ form_input_kpm: 1572 });
+    expect(r.score).toBe(73);
+    expect(r.risk_flags).toContain("superhuman_typing_speed");
+  });
+
+  it("ignores typing speed when nothing was typed", () => {
+    const r = score_authenticity(
+      F({ bot_detected: false, input_methods: ["autofill"], typed: false, form_input_kpm: 9000 }),
+    );
+    expect(r.risk_flags).not.toContain("superhuman_typing_speed");
+  });
+
+  it("accepts the oldest legitimate certificate age observed", () => {
+    expect(human({ age_seconds: 345 }).risk_flags).not.toContain("stale_certificate");
+  });
+
+  it("flags a certificate that was hours old when claimed", () => {
+    const r = human({ age_seconds: 80176 });
+    expect(r.score).toBe(73);
+    expect(r.risk_flags).toContain("stale_certificate");
+    expect(r.evidence.join(" ")).toContain("22 hours old");
+  });
+});
+
+describe("stale certificate threshold", () => {
+  it("flags the 53-minute partner certificate", () => {
+    const r = score_authenticity(
+      F({ bot_detected: false, input_methods: ["typing"], typed: true, seconds_on_page: 180, age_seconds: 3187 }),
+    );
+    expect(r.risk_flags).toContain("stale_certificate");
+    expect(r.evidence.join(" ")).toContain("53 minutes old");
   });
 });

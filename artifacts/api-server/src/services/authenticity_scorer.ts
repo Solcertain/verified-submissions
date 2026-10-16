@@ -140,6 +140,15 @@ export function score_authenticity(
     }
   }
 
+  // --- Typing speed: only meaningful when there was typing to measure ---
+  if (f.typed === true && f.form_input_kpm !== null && f.form_input_kpm > R.SUPERHUMAN_TYPING_KPM) {
+    score -= R.SUPERHUMAN_TYPING;
+    risk_flags.push("superhuman_typing_speed");
+    evidence.push(
+      `Typing ran at ${Math.round(f.form_input_kpm)} keys/min — faster than a person types.`,
+    );
+  }
+
   // --- Session duration ---
   const secs = f.seconds_on_page;
   if (secs !== null) {
@@ -179,6 +188,16 @@ export function score_authenticity(
   } else if (consent.verdict === "VERIFIED") {
     score += R.CONSENT_VERIFIED;
     evidence.push("Consent verified by TrustedForm.");
+  }
+
+  // --- Certificate age at claim ---
+  if (f.age_seconds !== null && f.age_seconds > R.STALE_CERTIFICATE_SECONDS) {
+    score -= R.STALE_CERTIFICATE;
+    risk_flags.push("stale_certificate");
+    const hours = f.age_seconds / 3600;
+    evidence.push(
+      `Certificate was ${hours >= 1.5 ? `${Math.round(hours)} hours` : `${Math.round(f.age_seconds / 60)} minutes`} old when claimed.`,
+    );
   }
 
   // --- Certificate integrity ---
