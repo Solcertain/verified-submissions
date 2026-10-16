@@ -2,6 +2,7 @@ import type { ScoreAndRouteOutcome } from "./score_and_route_service.js";
 import { score_authenticity, type AuthenticityResult } from "./authenticity_scorer.js";
 import type { BehaviouralFeatures } from "./feature_extractor.js";
 import { MODEL_VERSION as ENGINE_VERSION } from "../config/authenticity_rules.js";
+import { logger } from "../lib/logger.js";
 
 // Version stamp returned to Lead Prosper so responses are traceable to a model rev.
 export const MODEL_VERSION = ENGINE_VERSION;
@@ -54,13 +55,11 @@ export function mapScoreToOneToTen(score: number): number {
 // consent is reported separately, because a real human on a non-compliant
 // partner form is neither "approved" nor "a bot", and collapsing the two would
 // force a choice between two true statements.
-// A certificate that does not belong to this lead proves nothing about its
-// consent, and typing no keystrokes could have produced means no person typed;
-// those flags force review even when the other evidence is strong.
-const REVIEW_FLAGS = ["certificate_reused", "certificate_page_mismatch", "synthetic_typing"];
-
 function status_for(result: AuthenticityResult): LeadProsperFlatResponse["vs_status"] {
-  const integrity_failed = result.risk_flags.some((f) => REVIEW_FLAGS.includes(f));
+  // Some findings (a certificate that belongs to another lead, typing no
+  // keystrokes could produce) send a lead to review even when the rest of the
+  // evidence is strong; the detector that found it decides, not this mapper.
+  const integrity_failed = result.review_required;
   switch (result.classification) {
     case "BOT_OR_SCRIPT":
     case "AUTOFILL_OR_HIGH_RISK_AUTOMATION":
@@ -87,6 +86,20 @@ function build_flat(
   analysis_id: string | null,
 ): LeadProsperFlatResponse {
   const vs_status = status_for(result);
+
+  // Shadow checks never touch the response; their findings go to the logs so a
+  // candidate check can be measured on live traffic before it is promoted.
+  if (result.shadow_findings.length > 0) {
+    logger.info(
+      {
+        analysis_id,
+        model_version: result.model_version,
+        live_score: result.score,
+        shadow_findings: result.shadow_findings,
+      },
+      "shadow detector findings",
+    );
+  }
 
   // Return eligibility stays strict: high-confidence automation only. A
   // deficient-consent lead is a conversation with the partner, not a return.

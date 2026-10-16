@@ -3,7 +3,7 @@ import { score_authenticity } from "../services/authenticity_scorer.js";
 import { extract_features, empty_features } from "../services/feature_extractor.js";
 import type { BehaviouralFeatures } from "../services/feature_extractor.js";
 import real_claim from "./fixtures/claim_with_scans.json";
-import ai_agent from "./fixtures/ai_agent_chatgpt_2026-10-16.json";
+import ai_agent from "./fixtures/botlab/agents/chatgpt_agent_2026-10-16.json";
 
 // Covers the scenarios required by the MVP spec. The engine is pure, so none of
 // these touch the network, the database or the clock.

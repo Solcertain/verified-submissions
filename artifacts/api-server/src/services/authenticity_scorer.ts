@@ -1,6 +1,7 @@
 import type { BehaviouralFeatures } from "./feature_extractor.js";
 import * as R from "../config/authenticity_rules.js";
-import { is_page_mismatch } from "./certificate_integrity.js";
+import { DETECTORS } from "../detectors/registry.js";
+import type { Detector, ShadowFinding } from "../detectors/types.js";
 
 // Deterministic behavioural authenticity model over TrustedForm v4 Insights.
 //
@@ -49,6 +50,11 @@ export interface AuthenticityResult {
   risk_flags: string[];
   evidence: string[];
   signals_used: number;
+  // A detector found something that sends the lead to review whatever the score.
+  review_required: boolean;
+  // What checks still in shadow mode would have reported. Never affects the
+  // score; used to measure a new check against live traffic before promoting it.
+  shadow_findings: ShadowFinding[];
 }
 
 function clamp(n: number): number {
@@ -99,148 +105,33 @@ export interface ScoreOptions {
 export function score_authenticity(
   f: BehaviouralFeatures,
   options: ScoreOptions = {},
+  detectors: readonly Detector[] = DETECTORS,
 ): AuthenticityResult {
   let score = R.NEUTRAL_BASELINE;
   const risk_flags: string[] = [];
   const evidence: string[] = [];
+  const shadow_findings: ShadowFinding[] = [];
   let signals_used = 0;
+  let review_required = false;
 
-  // --- Bot detection: the single strongest signal TrustedForm offers ---
-  if (f.bot_detected === true) {
-    score -= R.BOT_DETECTED;
-    risk_flags.push("bot_detected");
-    evidence.push("TrustedForm flagged this session as a bot.");
-    signals_used++;
-  } else if (f.bot_detected === false) {
-    score += R.BOT_CHECK_PASSED;
-    evidence.push("TrustedForm's bot check passed.");
-    signals_used++;
-  }
-  // null → silence. We asked and got nothing; that is not evidence of a human.
-
-  // --- Input method. Only meaningful when TrustedForm reported the array. ---
-  if (f.input_methods !== null) {
-    signals_used++;
-    if (f.typed === true) {
-      score += R.TYPING_OBSERVED;
-      evidence.push(
-        f.autofilled === true
-          ? "Fields were typed, with some autofilled — normal mixed human behaviour."
-          : "Fields were typed by hand.",
-      );
-    } else {
-      score -= R.NO_TYPING_AT_ALL;
-      risk_flags.push("no_typing_observed");
-      evidence.push("No typing at all — the form was populated without keystrokes.");
-    }
-    if (f.pasted === true) {
-      score -= R.PASTED_INPUT;
-      risk_flags.push("pasted_input");
-      evidence.push("At least one field was pasted.");
-    }
-  }
-
-  // --- Typing speed: only meaningful when there was typing to measure ---
-  if (f.typed === true && f.form_input_kpm !== null && f.form_input_kpm > R.SUPERHUMAN_TYPING_KPM) {
-    score -= R.SUPERHUMAN_TYPING;
-    risk_flags.push("superhuman_typing_speed");
-    evidence.push(
-      `Typing ran at ${Math.round(f.form_input_kpm)} keys/min — faster than a person types.`,
-    );
-  }
-
-  // --- Synthetic typing: typed text that no keystrokes could have produced ---
-  if (f.typed === true && f.form_input_kpm !== null) {
-    const kpm = f.form_input_kpm;
-    const wpm = f.form_input_wpm;
-    if (kpm === 0 || (wpm !== null && wpm > kpm)) {
-      score -= R.SYNTHETIC_TYPING;
-      risk_flags.push("synthetic_typing");
-      evidence.push(
-        kpm === 0
-          ? "Text was entered as typing but with zero keystrokes — a person cannot type without pressing keys."
-          : `More words (${Math.round(wpm!)}/min) than keystrokes (${Math.round(kpm)}/min) — impossible for real typing.`,
-      );
-    }
-  }
-
-  // --- Automation environment: the shape of a cloud-hosted browser ---
-  if (
-    f.os_name === "Linux" &&
-    f.is_mobile === false &&
-    f.geo_country_code !== null &&
-    f.geo_state === null
-  ) {
-    score -= R.AUTOMATION_ENVIRONMENT;
-    risk_flags.push("automation_environment");
-    evidence.push(
-      "Desktop Linux on an IP that locates only to a country — typical of a cloud-hosted browser, rare for consumers.",
-    );
-  }
-
-  // --- Session duration ---
-  const secs = f.seconds_on_page;
-  if (secs !== null) {
-    signals_used++;
-    if (secs < R.INSTANT_SESSION_SECONDS) {
-      score -= R.INSTANT_SESSION;
-      risk_flags.push("instant_submission");
-      evidence.push(`Submitted after only ${secs}s — too fast to have been read.`);
-    } else if (secs < R.BRIEF_SESSION_SECONDS) {
-      score -= R.BRIEF_SESSION;
-      risk_flags.push("brief_session");
-      evidence.push(`Brief ${secs}s session.`);
-    } else if (secs >= R.SUSTAINED_SESSION_SECONDS) {
-      const ramp = Math.min(
-        1,
-        (secs - R.SUSTAINED_SESSION_SECONDS) /
-          (R.LONG_SESSION_SECONDS - R.SUSTAINED_SESSION_SECONDS),
-      );
-      score += R.SUSTAINED_SESSION + ramp * (R.SUSTAINED_SESSION_MAX - R.SUSTAINED_SESSION);
-      evidence.push(`Sustained ${secs}s session.`);
-    } else if (secs >= R.MODERATE_SESSION_SECONDS) {
-      score += R.MODERATE_SESSION;
-      evidence.push(`${secs}s session.`);
-    }
-  }
-
-  // --- Consent: still reported as its own verdict, but now also moves the
-  // score, so a deficient disclosure is visible in vs_score and drops the lead
-  // out of STRONG_REAL_HUMAN.
   const consent = assess_consent(f, options.required_consent_terms);
-  if (consent.verdict === "MISSING_LANGUAGE") {
-    score -= R.CONSENT_LANGUAGE_MISSING;
-    risk_flags.push("consent_language_missing");
-    evidence.push(
-      `Consent language is missing required phrasing: ${consent.missing_core_terms.join(", ")}.`,
-    );
-  } else if (consent.verdict === "VERIFIED") {
-    score += R.CONSENT_VERIFIED;
-    evidence.push("Consent verified by TrustedForm.");
-  }
+  const input = { features: f, options, consent };
 
-  // --- Certificate age at claim ---
-  if (f.age_seconds !== null && f.age_seconds > R.STALE_CERTIFICATE_SECONDS) {
-    score -= R.STALE_CERTIFICATE;
-    risk_flags.push("stale_certificate");
-    const hours = f.age_seconds / 3600;
-    evidence.push(
-      `Certificate was ${hours >= 1.5 ? `${Math.round(hours)} hours` : `${Math.round(f.age_seconds / 60)} minutes`} old when claimed.`,
-    );
-  }
-
-  // --- Certificate integrity ---
-  if (options.certificate_reused) {
-    score -= R.CERTIFICATE_REUSED;
-    risk_flags.push("certificate_reused");
-    evidence.push("This certificate was already claimed for a different lead.");
-  }
-  if (is_page_mismatch(f.page_url, options.landing_page_url)) {
-    score -= R.CERTIFICATE_PAGE_MISMATCH;
-    risk_flags.push("certificate_page_mismatch");
-    evidence.push(
-      `Certificate was captured on ${f.page_url}, not the lead's landing page ${options.landing_page_url}.`,
-    );
+  for (const detector of detectors) {
+    const result = detector.evaluate(input);
+    if (detector.status === "shadow") {
+      for (const finding of result.findings) {
+        shadow_findings.push({ detector: detector.id, ...finding });
+      }
+      continue;
+    }
+    signals_used += result.signals ?? 0;
+    for (const finding of result.findings) {
+      score += finding.points;
+      if (finding.flag) risk_flags.push(finding.flag);
+      if (finding.evidence) evidence.push(finding.evidence);
+      if (finding.forces_review) review_required = true;
+    }
   }
 
   score = clamp(score);
@@ -297,5 +188,7 @@ export function score_authenticity(
     risk_flags,
     evidence,
     signals_used,
+    review_required,
+    shadow_findings,
   };
 }
