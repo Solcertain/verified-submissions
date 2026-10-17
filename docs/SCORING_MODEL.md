@@ -275,6 +275,7 @@ Promotion rules and the monthly bot run are in [BOT_LAB.md](BOT_LAB.md).
 | 0.3-insights | 2026-10-13 | Session ramp; consent scored; certificate id fallback; reuse and page-mismatch checks |
 | 0.4-insights | 2026-10-16 | Superhuman typing, stale certificate, synthetic typing, automation environment |
 | (refactor) | 2026-10-16 | Detectors, shadow mode, bot lab. No scoring change — 490 snapshot cases identical |
+| (consistency) | 2026-10-17 | Generic endpoints, stored status, routing, Sheets and webhooks moved onto this model. No scoring change |
 
 ---
 
@@ -308,12 +309,12 @@ Stated plainly so nobody oversells the engine.
 5. **AI agents that drive a real desktop with real keystrokes** would defeat
    synthetic typing. Network and plausibility checks (roadmap phase 3) and a
    first-party behaviour sensor (phase 4) are the answer.
-6. **The generic endpoints still use the legacy model.** `POST /api/score-lead`
-   and `POST /api/score-and-route` return the legacy `score_lead` result, and the
-   legacy result is what is written to `lead_submissions.score_json` / `status`
-   and drives Google Sheets review rows and outbound webhooks. Only the Lead
-   Prosper pre-ping returns this model. Treat the stored `status` column as
-   legacy.
+6. **Pasted-text endpoints cannot use this model.** `/score-lead/from-text` and
+   `/score-and-route/from-text` receive no TrustedForm insights, so they still
+   run the retired event-log model and label every response and stored row
+   `model_version: "legacy-event-log"`. Every certificate-based endpoint, the
+   stored `status`, Google Sheets rows and outbound webhooks use this model
+   (since 2026-10-17; rows stored earlier carry the legacy status).
 7. **Page mismatch is inert** until Lead Prosper sends `landing_page_url`.
 
 ---

@@ -10,6 +10,8 @@ import {
 } from "./event_parser.js";
 import { infer_field_roles, normalize_submission } from "./field_inference.js";
 import { score_lead, type ScoreResult } from "./scoring_engine.js";
+import { score_authenticity } from "./authenticity_scorer.js";
+import { to_score_result } from "./verdict.js";
 import {
   route_lead,
   build_webhook_payload,
@@ -219,7 +221,15 @@ export async function scoreAndRouteLead(
 
   const inferred_fields = infer_field_roles(parsed_lead.field_map);
   const normalized = normalize_submission(parsed_lead, inferred_fields);
-  const score = score_lead(normalized);
+  // One model everywhere: routing, Sheets, webhooks, the stored status and the
+  // Lead Prosper response all decide on the current authenticity model. The
+  // legacy event-log score is still computed and stored, for comparison only.
+  const legacy_score = score_lead(normalized);
+  const authenticity = score_authenticity(features, {
+    required_consent_terms: consent_terms,
+    landing_page_url,
+  });
+  const score = to_score_result(authenticity, legacy_score.metrics);
 
   // Route.
   const routing_config = get_routing_config();
@@ -288,7 +298,14 @@ export async function scoreAndRouteLead(
       legacy: parsed_lead_payload,
       features,
     } as unknown as Record<string, unknown>,
-    score_json: score as unknown as Record<string, unknown>,
+    score_json: {
+      ...score,
+      model_version: authenticity.model_version,
+      classification: authenticity.classification,
+      consent: authenticity.consent,
+      review_required: authenticity.review_required,
+      legacy: legacy_score,
+    } as unknown as Record<string, unknown>,
     status: score.status,
     processed_at: new Date(),
   });

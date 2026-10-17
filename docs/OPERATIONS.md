@@ -45,12 +45,14 @@ Consumer ──► solarenergynerds.com/form-step  (TrustedForm script, tagged c
 | `GET /api/healthz` | none | Liveness: `{"status":"ok"}` |
 | `POST /api/leadprosper/pre-ping` | `x-api-key` | **The production scoring endpoint.** Returns flat `vs_*` fields |
 | `POST /api/leadprosper/outcome/:token` | secret path token | Records what happened to a lead |
-| `POST /api/score-and-route` | `x-api-key` | Generic claim + legacy score + routing. Supports `?force=true` to re-claim. Used by the bot lab to capture fixtures |
-| `POST /api/score-and-route/from-text` | `x-api-key` | Same, from pasted certificate text |
-| `POST /api/score-lead`, `/score-lead/from-text` | `x-api-key` | Legacy scorer only |
+| `POST /api/score-and-route` | `x-api-key` | Generic claim + score + routing (Sheets, webhooks). Supports `?force=true` to re-claim. Used by the bot lab to capture fixtures |
+| `POST /api/score-lead` | `x-api-key` | Claim + score, no routing or storage |
+| `GET /api/cron/sync-returns` | `Authorization: Bearer <CRON_SECRET>` or `x-api-key` | Pulls returned leads from Lead Prosper into `lead_outcomes`. Runs daily via Vercel Cron |
+| `POST /api/score-and-route/from-text`, `/score-lead/from-text` | `x-api-key` | **Deprecated.** Pasted event text; legacy event-log model only, labelled `legacy-event-log` |
 
-The generic and legacy endpoints return the **legacy** model, not the one in
-SCORING_MODEL.md (see its §12, item 6).
+Every certificate-based endpoint uses the model in SCORING_MODEL.md and reaches
+the same decision for the same lead; the legacy event-log score is kept
+alongside in `score_json.legacy` for comparison.
 
 ### Authentication
 
@@ -73,6 +75,9 @@ SCORING_MODEL.md (see its §12, item 6).
 | `INTERNAL_API_KEY` | yes | `x-api-key` on scoring endpoints |
 | `LP_CALLBACK_TOKEN` | yes | Outcome endpoint path secret |
 | `DATABASE_URL` | yes | Neon Postgres |
+| `LP_API_KEY` | for returns | Lead Prosper public API key (Bearer), used by the returns sync |
+| `CRON_SECRET` | for returns | Vercel sends it as `Authorization: Bearer` on cron calls; without it the daily sync is rejected |
+| `LP_RETURNS_CAMPAIGNS` | no | Comma-separated campaign ids to sync returns for; default `23668` |
 | `GOOGLE_SHEETS_ENABLED`, `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEET_NAME` | no | Legacy review-row export |
 | `OUTBOUND_WEBHOOK_ENABLED`, `OUTBOUND_WEBHOOK_URL`, `CRM_WEBHOOK_URL`, `NOTIFY_WEBHOOK_URL` | no | Legacy routing |
 | `LOG_LEVEL` | no | pino log level |
@@ -162,9 +167,34 @@ Language Manager the same day.**
 | Sold | Sold trigger | Weak positive: a buyer accepted it |
 | Unsold — no buyers available | Unsold trigger | **None for authenticity.** Coverage, not quality |
 | Unsold — rejected by filter | Unsold trigger | None for authenticity |
-| Returned + reason | Lead Prosper API (pull) | **The key negative label** when the reason is wrong number, fake, didn't request |
+| Returned + reason | Returns sync (pull, daily) | **The key negative label** when the reason is wrong number, fake, didn't request |
 | Buyer disposition (contacted, wrong number, credit fail …) | Not yet collected | Strongest labels; credit fail etc. feed lead quality, never authenticity |
 | Bot lab agents | Captured fixtures | Guaranteed negatives, on demand |
+
+### Returns sync
+
+`GET /api/cron/sync-returns` runs daily at 10:00 UTC (`vercel.json`). It reads
+the last 21 days of leads for each campaign in `LP_RETURNS_CAMPAIGNS`, keeps the
+returned ones, and records each once as `outcome: "returned"` with the returning
+buyer, price and reason. Re-running is safe: a lead already recorded as returned
+is skipped. Run it by hand with `GET /api/cron/sync-returns?days=60` and the
+`x-api-key` header.
+
+Each return reason is sorted into a category (stored as
+`raw_payload_json.return_category`):
+
+| Category | Example reasons | Bears on verification |
+|---|---|---|
+| `fraud` | fake, bot, made-up details | yes |
+| `contact_invalid` | wrong number, disconnected, bad email | yes |
+| `consent_dispute` | never filled out a form, didn't request, DNC | yes |
+| `duplicate` | duplicate lead from Sept 28th | no |
+| `lead_quality` | credit, renter, not interested, out of area | no — real people |
+| `other` | anything unrecognised | review by hand |
+
+Only the first three are negative labels for calibration. The categories are
+keyword rules in `src/services/leadprosper_returns.ts`; read the `other` bucket
+periodically and add rules for reasons it misses.
 
 ### Do we need more data?
 
@@ -189,13 +219,17 @@ baseline, not from outcome statistics.
 `lead_submissions` — one row per claimed certificate: `certificate_url`,
 `certificate_id`, `raw_payload_json` (request body), `trustedform_raw_json`
 (full claim response), `parsed_submission_json` (`{ legacy, features }` —
-features are what the model scores), `score_json` and `status` (**legacy
-model**), `received_at`, `processed_at`.
+features are what the model scores), `score_json` (current-model result with
+`model_version`, plus the legacy score under `legacy`) and `status`,
+`received_at`, `processed_at`. Rows written before 2026-10-17 hold the legacy
+model's score and status.
 
-`lead_outcomes` — one row per outcome callback: `lp_lead_id`,
+`lead_outcomes` — one row per outcome (trigger callback or returns sync): `lp_lead_id`,
 `certificate_url`, `outcome`, `buyer`, `sell_price`, `return_reason`,
 `supplier`, `raw_payload_json`, `analysis_id` (linked by normalised certificate
 URL when found; no foreign key, so outcomes for unscored leads are kept).
+Consumer details (name, email, phone, address, IP and similar) are stripped
+from `raw_payload_json` before storing, whatever the trigger sends.
 
 ---
 
@@ -216,7 +250,8 @@ URL when found; no foreign key, so outcomes for unscored leads are kept).
 
 - `routes.test.ts` and `node build.mjs` need the `pg` package, which is not
   installed in the local checkout; both work on Vercel. All other tests run
-  locally.
+  locally. To run `routes.test.ts` locally without reinstalling, point a vitest
+  config's `resolve.alias.pg` at any installed copy of `pg`.
 - Line-ending warnings (LF → CRLF) on commit are harmless.
 
 ---
@@ -241,8 +276,8 @@ URL when found; no foreign key, so outcomes for unscored leads are kept).
 |---|---|---|
 | Replace the Sold trigger body (§4.2) | Lead Prosper admin | Sold labels |
 | Add `landing_page_url` to the pre-ping body (§4.1) | Lead Prosper admin | Page-mismatch check |
-| Pull returns from Lead Prosper into calibration | Engineering | Negative labels |
-| Point the generic endpoints and stored `status` at the current model | Engineering | One model everywhere |
+| Set `LP_API_KEY` and `CRON_SECRET` in Vercel | Ops | Returns sync |
+| Remove personal data already stored by the Sold trigger (Oct 16–17 rows) | Engineering, with approval | Data minimisation |
 | Lead-data and network checks (roadmap phase 3) | Engineering + Lead Prosper fields + IP-intelligence service | Catching invented people |
 | First-party behaviour sensor on our forms (phase 4) | Engineering + form repo | Agents with real keystrokes |
 | Fix or remove `api.verifiedsubmissions.com` | Ops | Partner-facing URL |

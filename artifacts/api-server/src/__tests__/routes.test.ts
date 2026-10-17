@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../services/submission_store.js", () => ({
   save_submission: vi.fn(async () => ({ id: "analysis-123" })),
   get_submission_by_certificate: vi.fn(async () => null),
+  leadSubmissionsTable: {},
 }));
 vi.mock("../services/google_sheets.js", () => ({
   append_review_row: vi.fn(async () => ({ success: true, row_id: "r1", error: null })),
@@ -22,8 +23,28 @@ import express, { type Express } from "express";
 import request from "supertest";
 import router from "../routes/index.js";
 import { claim_certificate } from "../services/trustedform_client.js";
-import { get_submission_by_certificate } from "../services/submission_store.js";
-import { GOOD_LEAD_EVENT_LOG } from "../fixtures/sample_leads.js";
+import { get_submission_by_certificate, save_submission } from "../services/submission_store.js";
+import { MODEL_VERSION } from "../config/authenticity_rules.js";
+import { extract_features } from "../services/feature_extractor.js";
+import agent_claim from "./fixtures/botlab/agents/chatgpt_agent_2026-10-16.json";
+
+// A clean own-form human as TrustedForm v4 returns it: typed, 180s, verified consent.
+const HUMAN_CLAIM = {
+  insights: {
+    properties: {
+      bot_detected: false,
+      form_input_method: ["typing"],
+      form_input_kpm: 120,
+      form_input_wpm: 30,
+      seconds_on_page: 180,
+      age_seconds: 5,
+      page_url: "https://solarenergynerds.com/form-step/",
+      os: { name: "iOS", is_mobile: true },
+      approx_ip_geo: { state: "Ohio", country_code: "US" },
+    },
+  },
+  verify: { result: { success: true } },
+};
 
 const VALID_URL = `https://cert.trustedform.com/${"a".repeat(40)}`;
 
@@ -63,7 +84,7 @@ describe("POST /api/leadprosper/pre-ping", () => {
     (claim_certificate as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status_code: 200,
-      data: { raw_text: GOOD_LEAD_EVENT_LOG },
+      data: HUMAN_CLAIM,
       error: null,
     });
 
@@ -83,10 +104,11 @@ describe("POST /api/leadprosper/pre-ping", () => {
     expect(res.body.vs_score).toBeGreaterThanOrEqual(0);
     expect(res.body.vs_score).toBeLessThanOrEqual(100);
     expect(["approved", "review", "reject"]).toContain(res.body.vs_status);
-    expect(res.body.vs_model_version).toBe("0.1-beta");
+    expect(res.body.vs_model_version).toBe(MODEL_VERSION);
     expect(res.body.vs_analysis_id).toBe("analysis-123");
-    // The "good" fixture is a clean, consented session — should pass.
     expect(res.body.vs_pass).toBe(true);
+    expect(res.body.vs_score).toBe(98);
+    expect(res.body.vs_status).toBe("approved");
   });
 
   it("400s when no certificate URL is present in the payload", async () => {
@@ -110,7 +132,7 @@ describe("POST /api/leadprosper/pre-ping", () => {
       .send({ certificate_url: VALID_URL });
     expect(res.status).toBe(200);
     expect(res.body.vs_pass).toBe(false);
-    expect(res.body.vs_classification).toBe("inconclusive");
+    expect(res.body.vs_classification).toBe("INCONCLUSIVE");
     expect(res.body.vs_status).toBe("review");
   });
 });
@@ -120,7 +142,7 @@ describe("POST /api/score-and-route (after refactor to shared service)", () => {
     (claim_certificate as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status_code: 200,
-      data: { raw_text: GOOD_LEAD_EVENT_LOG },
+      data: HUMAN_CLAIM,
       error: null,
     });
 
@@ -131,6 +153,8 @@ describe("POST /api/score-and-route (after refactor to shared service)", () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.cached).toBe(false);
+    expect(res.body.model_version).toBe(MODEL_VERSION);
+    expect(res.body.score).toMatchObject({ value: 98, status: "approved" });
     expect(res.body).toHaveProperty("parsed_lead");
     expect(res.body).toHaveProperty("score");
     expect(res.body).toHaveProperty("routing");
@@ -161,3 +185,51 @@ describe("POST /api/score-and-route (after refactor to shared service)", () => {
     expect(claim_certificate).not.toHaveBeenCalled();
   });
 });
+
+// One model everywhere: the generic endpoint, routing and the stored status
+// must reach the same decision as the Lead Prosper response for the same lead.
+describe("one model across endpoints", () => {
+  async function both(claim: unknown) {
+    (claim_certificate as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, status_code: 200, data: claim, error: null });
+    const lp = await request(makeApp()).post("/api/leadprosper/pre-ping").send({ certificate_url: VALID_URL });
+    const generic = await request(makeApp()).post("/api/score-and-route").send({ certificate_url: VALID_URL });
+    return { lp: lp.body, generic: generic.body };
+  }
+
+  it("sends the AI agent to review on both endpoints, and stores review", async () => {
+    const { lp, generic } = await both(agent_claim);
+    expect(lp.vs_status).toBe("review");
+    expect(generic.score.status).toBe("review");
+    expect(generic.score.value).toBe(lp.vs_score);
+    expect(generic.routing.decision).toBe("sent_to_review");
+    const saved = (save_submission as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+    expect(saved.status).toBe("review");
+    expect(saved.score_json.model_version).toBe(MODEL_VERSION);
+    expect(saved.score_json.legacy).toBeDefined();
+  });
+
+  it("approves the clean human on both endpoints", async () => {
+    const { lp, generic } = await both(HUMAN_CLAIM);
+    expect(lp.vs_status).toBe("approved");
+    expect(generic.score.status).toBe("approved");
+    expect(generic.score.value).toBe(lp.vs_score);
+  });
+
+  it("rescores a cached certificate on the current model", async () => {
+    (get_submission_by_certificate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "cached-row",
+      processed_at: new Date("2026-10-16T00:00:00Z"),
+      raw_payload_json: {},
+      parsed_submission_json: { legacy: { certificate_id: "CID" }, features: { ...extract_agent() } },
+      score_json: { value: 98, status: "approved" },
+    });
+    const res = await request(makeApp()).post("/api/score-and-route").send({ certificate_url: VALID_URL });
+    expect(res.body.cached).toBe(true);
+    expect(res.body.score.status).toBe("review");
+    expect(res.body.model_version).toBe(MODEL_VERSION);
+  });
+});
+
+function extract_agent() {
+  return extract_features(agent_claim);
+}

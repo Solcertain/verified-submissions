@@ -1,10 +1,11 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { pgTable, text, uuid, timestamp, jsonb, numeric, index } from "drizzle-orm/pg-core";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import pg from "pg";
 import { logger } from "../lib/logger.js";
 import { leadSubmissionsTable } from "./submission_store.js";
 import { normalize_certificate_url } from "./trustedform_client.js";
+import { scrub_pii } from "./pii.js";
 
 const { Pool } = pg;
 
@@ -107,7 +108,7 @@ export function normalize_outcome_payload(body: unknown): OutcomePayload {
     sell_price: first_string(merged, ["sell_price", "lp_lead_sell_price", "revenue", "price"]),
     return_reason: first_string(merged, ["return_reason", "error_message"]),
     supplier,
-    raw,
+    raw: scrub_pii(raw),
   };
 }
 
@@ -167,4 +168,15 @@ export async function save_outcome(payload: OutcomePayload): Promise<StoredOutco
     logger.error({ err }, "Failed to store lead outcome");
     return null;
   }
+}
+
+// Whether this lead already has an outcome of this kind, so a repeated sync
+// does not record the same return twice.
+export async function has_outcome(lp_lead_id: string, outcome: string): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: leadOutcomesTable.id })
+    .from(leadOutcomesTable)
+    .where(and(eq(leadOutcomesTable.lp_lead_id, lp_lead_id), eq(leadOutcomesTable.outcome, outcome)))
+    .limit(1);
+  return rows.length > 0;
 }

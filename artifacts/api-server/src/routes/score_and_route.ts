@@ -4,7 +4,11 @@ import {
   parse_trustedform_text,
 } from "../services/event_parser.js";
 import { infer_field_roles, normalize_submission } from "../services/field_inference.js";
-import { score_lead } from "../services/scoring_engine.js";
+import { score_lead, type SessionMetrics } from "../services/scoring_engine.js";
+import { score_authenticity } from "../services/authenticity_scorer.js";
+import { read_stored_features } from "../services/leadprosper_flat_fields.js";
+import { to_score_result } from "../services/verdict.js";
+import { MODEL_VERSION } from "../config/authenticity_rules.js";
 import {
   route_lead,
   build_webhook_payload,
@@ -66,19 +70,35 @@ router.post("/score-and-route", require_api_key, async (req: Request, res: Respo
       res.status(400).json({ ok: false, error: outcome.error });
       return;
 
-    case "cached":
+    case "cached": {
+      // Rescore stored features under the current model, exactly as the Lead
+      // Prosper pre-ping does, so a repeat request never replays an old score.
+      // Rows stored before features were kept fall back to their stored score.
+      const stored = read_stored_features(outcome.parsed_lead);
+      const stored_score = (outcome.score ?? {}) as Record<string, unknown>;
+      const rescored = stored
+        ? score_authenticity(stored, {
+            required_consent_terms: outcome.required_consent_terms,
+            certificate_reused: outcome.certificate_reused,
+            landing_page_url: outcome.landing_page_url,
+          })
+        : null;
       res.json({
         ok: true,
         cached: true,
         stored_at: outcome.stored_at,
         claim_result: { ok: true, status_code: 200, certificate_url: outcome.certificate_url },
         parsed_lead: outcome.parsed_lead,
-        score: outcome.score,
+        score: rescored
+          ? to_score_result(rescored, (stored_score["metrics"] ?? {}) as SessionMetrics)
+          : outcome.score,
+        model_version: rescored ? rescored.model_version : (stored_score["model_version"] ?? null),
         routing: null,
         sheet_result: null,
         webhook_result: null,
       });
       return;
+    }
 
     case "claim_failed":
       res.json({
@@ -106,6 +126,7 @@ router.post("/score-and-route", require_api_key, async (req: Request, res: Respo
         parsed_lead: outcome.parsed_lead,
         features: outcome.features,
         score: outcome.score,
+        model_version: MODEL_VERSION,
         routing: outcome.routing,
         sheet_result: outcome.sheet_result,
         webhook_result: outcome.webhook_result,
@@ -196,7 +217,8 @@ router.post("/score-and-route/from-text", require_api_key, async (req: Request, 
     certificate_id: normalized.certificate_id || undefined,
     raw_payload_json: { event_log_text, certificate_url: cert_url || null },
     parsed_submission_json: from_text_parsed_lead as unknown as Record<string, unknown>,
-    score_json: score as unknown as Record<string, unknown>,
+    // Labelled so these rows are never mistaken for current-model results.
+    score_json: { ...score, model_version: "legacy-event-log" } as unknown as Record<string, unknown>,
     status: score.status,
     processed_at: new Date(),
   });
@@ -215,6 +237,10 @@ router.post("/score-and-route/from-text", require_api_key, async (req: Request, 
     routing,
     sheet_result,
     webhook_result,
+    // Pasted event text carries none of the TrustedForm insights the current
+    // model scores, so this endpoint can only run the legacy event-log model.
+    model_version: "legacy-event-log",
+    deprecated: "Scores and routes with the retired event-log model. Use POST /api/score-and-route with a certificate URL.",
   });
 });
 

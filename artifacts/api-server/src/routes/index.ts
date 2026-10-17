@@ -4,6 +4,7 @@ import leadScoringRouter from "./lead_scoring.js";
 import scoreAndRouteRouter from "./score_and_route.js";
 import leadProsperRouter from "./leadprosper.js";
 import leadProsperOutcomeRouter from "./leadprosper_outcome.js";
+import cronRouter from "./cron.js";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(leadScoringRouter);
 router.use(scoreAndRouteRouter);
 router.use(leadProsperRouter);
 router.use(leadProsperOutcomeRouter);
+router.use(cronRouter);
 
 export default router;

@@ -3,6 +3,7 @@ import { score_authenticity, type AuthenticityResult } from "./authenticity_scor
 import type { BehaviouralFeatures } from "./feature_extractor.js";
 import { MODEL_VERSION as ENGINE_VERSION } from "../config/authenticity_rules.js";
 import { logger } from "../lib/logger.js";
+import { action_for, status_for } from "./verdict.js";
 
 // Version stamp returned to Lead Prosper so responses are traceable to a model rev.
 export const MODEL_VERSION = ENGINE_VERSION;
@@ -49,34 +50,6 @@ export interface LeadProsperFlatResponse {
 export function mapScoreToOneToTen(score: number): number {
   const clamped = Math.max(0, Math.min(100, score));
   return Math.max(1, Math.ceil(clamped / 10));
-}
-
-// Status bands the authenticity score. It is NOT an overall verdict on the lead:
-// consent is reported separately, because a real human on a non-compliant
-// partner form is neither "approved" nor "a bot", and collapsing the two would
-// force a choice between two true statements.
-function status_for(result: AuthenticityResult): LeadProsperFlatResponse["vs_status"] {
-  // Some findings (a certificate that belongs to another lead, typing no
-  // keystrokes could produce) send a lead to review even when the rest of the
-  // evidence is strong; the detector that found it decides, not this mapper.
-  const integrity_failed = result.review_required;
-  switch (result.classification) {
-    case "BOT_OR_SCRIPT":
-    case "AUTOFILL_OR_HIGH_RISK_AUTOMATION":
-      return "reject";
-    case "INCONCLUSIVE":
-    case "LEAD_FARM_HUMAN_TYPER":
-      return "review";
-    case "REAL_HUMAN":
-    case "STRONG_REAL_HUMAN":
-      return integrity_failed ? "review" : "approved";
-  }
-}
-
-function action_for(status: LeadProsperFlatResponse["vs_status"]): RecommendedAction {
-  if (status === "approved") return "accept";
-  if (status === "review") return "review";
-  return "reject";
 }
 
 function build_flat(
@@ -160,7 +133,7 @@ function inconclusive_response(reason: string): LeadProsperFlatResponse {
 
 // Cached parsed_lead is an untyped JSON blob. Since 0.2-insights it is written as
 // { legacy, features }; anything older has no features and must not be guessed at.
-function read_stored_features(value: unknown): BehaviouralFeatures | null {
+export function read_stored_features(value: unknown): BehaviouralFeatures | null {
   const blob = (value ?? {}) as Record<string, unknown>;
   const features = blob["features"];
   if (typeof features !== "object" || features === null) return null;

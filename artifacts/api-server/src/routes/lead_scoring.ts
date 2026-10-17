@@ -7,6 +7,9 @@ import {
 } from "../services/event_parser.js";
 import { infer_field_roles, normalize_submission } from "../services/field_inference.js";
 import { score_lead } from "../services/scoring_engine.js";
+import { score_authenticity } from "../services/authenticity_scorer.js";
+import { extract_features } from "../services/feature_extractor.js";
+import { to_score_result } from "../services/verdict.js";
 
 const router = Router();
 
@@ -76,8 +79,11 @@ router.post("/score-lead", require_api_key, async (req: Request, res: Response) 
   const inferred_fields = infer_field_roles(parsed_lead.field_map);
   const normalized = normalize_submission(parsed_lead, inferred_fields);
 
-  // 6. Score the lead
-  const score = score_lead(normalized);
+  // 6. Score the lead on the current model; the legacy event-log score is
+  // returned alongside for comparison only.
+  const legacy_score = score_lead(normalized);
+  const authenticity = score_authenticity(extract_features(claim_result.data));
+  const score = to_score_result(authenticity, legacy_score.metrics);
 
   // 7. Return the full structured response
   res.json({
@@ -104,6 +110,9 @@ router.post("/score-lead", require_api_key, async (req: Request, res: Response) 
       status: normalized.status,
     },
     score,
+    model_version: authenticity.model_version,
+    classification: authenticity.classification,
+    legacy_score,
   });
 });
 
@@ -155,6 +164,10 @@ router.post("/score-lead/from-text", require_api_key, (req: Request, res: Respon
       status: normalized.status,
     },
     score,
+    // Pasted event text carries none of the TrustedForm insights the current
+    // model scores, so this endpoint can only run the legacy event-log model.
+    model_version: "legacy-event-log",
+    deprecated: "Scores with the retired event-log model. Use POST /api/score-lead with a certificate URL.",
   });
 });
 
