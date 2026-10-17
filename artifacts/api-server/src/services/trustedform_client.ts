@@ -9,25 +9,23 @@ const REQUEST_TIMEOUT_MS = 5_000;
 
 // Insights data points requested on every claim. Valid values come from the v4
 // InsightsParameters enum; only contracted properties may be queried, and the
-// account is billed per property returned. These are the ones that bear on
-// behavioural authenticity — the vendor computes them, so no per-form field
-// mapping is involved.
+// account is billed per property returned — so this lists exactly what a
+// detector in src/detectors reads, and nothing else. When a detector starts
+// using a new property, add it here in the same change.
+//
+// Dropped 2026-10-17 because nothing scored them: is_framed, browser, ip,
+// domain, created_at, expires_at. A future network check (datacenter IPs) can
+// use the ip_address Lead Prosper already sends, or re-add ip here.
 const INSIGHTS_PROPERTIES = [
-  "bot_detected",
-  "form_input_method",
-  "form_input_kpm",
-  "form_input_wpm",
-  "seconds_on_page",
-  "age_seconds",
-  "is_framed",
-  "browser",
-  "os",
-  "ip",
-  "approx_ip_geo",
-  "domain",
-  "page_url",
-  "created_at",
-  "expires_at",
+  "bot_detected", // bot_check
+  "form_input_method", // input_method, superhuman_typing, synthetic_typing
+  "form_input_kpm", // superhuman_typing, synthetic_typing
+  "form_input_wpm", // synthetic_typing
+  "seconds_on_page", // session_duration
+  "age_seconds", // stale_certificate
+  "os", // automation_environment (os name, is_mobile)
+  "approx_ip_geo", // automation_environment
+  "page_url", // certificate_page_mismatch
 ] as const;
 
 // Verify checks consent against the requirements configured on the ActiveProspect

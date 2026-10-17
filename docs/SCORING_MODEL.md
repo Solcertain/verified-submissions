@@ -82,9 +82,11 @@ Lead Prosper pre-ping
 | `verify.result.success` | verify | consent |
 | scan `found` / `not_found` | insights scans | consent |
 
-Also requested and stored but **not scored**: `is_framed`, browser, IP,
-`created_at`/`expires_at`, `language_approved`, `one_to_one`,
-`opt_in_types_satisfied`.
+Exactly these **nine Insights properties** are requested — TrustedForm bills
+per property returned, so nothing unscored is asked for (since 2026-10-17;
+`is_framed`, browser, IP, domain, `created_at` and `expires_at` were dropped).
+Verify's `language_approved`, `one_to_one` and `opt_in_types_satisfied` come
+back with the verify result and are stored but not scored.
 
 ### From the request body (Lead Prosper)
 
@@ -96,8 +98,11 @@ Also requested and stored but **not scored**: `is_framed`, browser, IP,
 | `consent_terms` | optional | Comma-separated phrases this campaign's disclosure must contain; replaces the default core terms for pass/fail |
 | `advertiser_name` | optional | Passed to TrustedForm verify for the one-to-one result; omitted if absent |
 
-**Currently sent by Lead Prosper:** `email`, `phone`, `lp_lead_id`,
-`trustedform_cert_url`. Not yet sent: `landing_page_url`.
+**Currently sent by Lead Prosper** (since 2026-10-17): `lp_lead_id`,
+`trustedform_cert_url`, `email`, `phone`, `landing_page_url`, `first_name`,
+`last_name`, `state`, `valid_phone`. The name, state and `valid_phone` fields
+are not scored yet; they feed the lead-data checks being built in shadow
+(see [VERIFICATION_PLAN.md](VERIFICATION_PLAN.md)).
 
 ---
 
@@ -315,7 +320,9 @@ Stated plainly so nobody oversells the engine.
    `model_version: "legacy-event-log"`. Every certificate-based endpoint, the
    stored `status`, Google Sheets rows and outbound webhooks use this model
    (since 2026-10-17; rows stored earlier carry the legacy status).
-7. **Page mismatch is inert** until Lead Prosper sends `landing_page_url`.
+7. **The name, state and phone fields are stored with the request.** When the
+   lead-data checks are built they should keep only their result (for example
+   "placeholder name: yes"), not the raw values.
 
 ---
 

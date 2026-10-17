@@ -94,10 +94,27 @@ local copy for development and must never be committed.
 The campaign calls `POST /api/leadprosper/pre-ping` with the `x-api-key` header
 and maps the returned `vs_*` fields into same-named custom fields.
 
-Body currently sent: `email`, `phone`, `lp_lead_id`, `trustedform_cert_url`.
+Body sent (since 2026-10-17, configured in the campaign's **Data Append**
+section):
 
-**To add (pending):** `landing_page_url` mapped to the lead's landing page
-field. This switches on the certificate page-mismatch check.
+```json
+{
+    "lp_lead_id": "{{lp_lead_id}}",
+    "trustedform_cert_url": "{{trustedform_cert_url}}",
+    "email": "{{email}}",
+    "phone": "{{phone}}",
+    "landing_page_url": "{{landing_page_url}}",
+    "first_name": "{{first_name}}",
+    "last_name": "{{last_name}}",
+    "state": "{{state}}",
+    "valid_phone": "{{valid_phone}}"
+}
+```
+
+Verified on the first live lead (2026-10-17 12:38): every field filled, and
+`valid_phone` populated — Lead Prosper's phone validation runs before this
+append. `landing_page_url` switches on the page-mismatch check. Saving the
+append without its response mappings pauses it, so never remove those.
 
 Optional per campaign: `consent_terms` (comma-separated required phrasing, for
 a campaign whose disclosure is worded differently from the solar one) and
@@ -283,7 +300,6 @@ from `raw_payload_json` before storing, whatever the trigger sends.
 | Item | Owner | Blocks |
 |---|---|---|
 | Replace the Sold trigger body (§4.2) | Lead Prosper admin | Sold labels |
-| Add `landing_page_url` to the pre-ping body (§4.1) | Lead Prosper admin | Page-mismatch check |
 | Set `LP_API_KEY` and `CRON_SECRET` in Vercel | Ops | Returns sync |
 | Remove personal data already stored by the Sold trigger (Oct 16–17 rows) | Engineering, with approval | Data minimisation |
 | Lead-data and network checks (roadmap phase 3) | Engineering + Lead Prosper fields + IP-intelligence service | Catching invented people |

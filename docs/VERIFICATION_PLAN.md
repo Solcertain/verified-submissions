@@ -54,7 +54,7 @@ phone validity and line type, area code against state.
 |---|---|---|
 | Oct 17 | Returns sync live, backfill, categories tuned; one model everywhere; Sold trigger fixed | done |
 | Oct 17–20 | Remove personal data from the 13 early Sold-trigger rows | Engineering, needs permission |
-| Oct 17–20 | Add `landing_page_url`, `first_name`, `last_name`, `state`, `valid_phone`, `phone_activity_score` to the pre-ping body | Lead Prosper admin |
+| Oct 17 | Add `landing_page_url`, `first_name`, `last_name`, `state`, `valid_phone` to the pre-ping body — **done**, verified on a live lead; page-mismatch check active | done |
 | Oct 20–22 | Lead-data detectors in **shadow**: placeholder / junk names, invalid phone (`valid_phone`), low phone activity, phone area code vs state | Engineering |
 | Oct 20–24 | Bot lab run 1 on a **test copy** of the form: ChatGPT agent, one open-source agent, Claude computer use | Engineering + test form |
 | Oct 22–27 | Shadow findings reviewed against live traffic; promote what is clean | Engineering |
