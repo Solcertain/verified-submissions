@@ -79,10 +79,10 @@ check is promoted only if it stays quiet on real customers.
   the recent leads checked had mostly not had time to be returned.) One in five
   good leads also carries it, so it needs a moderate weight, not a veto.
   `phone_activity_score` is never populated and is not used.
-- **IP state vs lead state is noisy on mobile.** 11 of 66 recent leads
-  mismatched, mostly phones on carrier networks that geolocate to hub states
-  (OH, TX, VA). Before promotion it should ignore mobile carrier IPs or only
-  count non-neighbouring states.
+- **IP state vs lead state was noisy on mobile.** 11 of 66 recent leads
+  mismatched, 9 of them phones on carrier networks that geolocate to hub states
+  (OH, TX, VA). Since 2026-10-17 the check ignores mobile devices: 2 of 66.
+  Google Search traffic (more desktop) is the real test of it.
 - **Lead Prosper field timing.** `valid_phone` must be computed before the
   pre-ping runs; if Lead Prosper validates after, the check has to read it from
   the outcome instead.

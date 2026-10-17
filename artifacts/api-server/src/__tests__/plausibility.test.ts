@@ -73,6 +73,9 @@ describe("ip_state_mismatch", () => {
   it("flags an IP in a different state from the lead", () => {
     expect(shadow_flags(lead({ state: "PA" }))).toContain("ip_state_mismatch");
   });
+  it("ignores phones, whose carrier IPs locate to hub states", () => {
+    expect(shadow_flags(lead({ state: "PA" }), { ...human, is_mobile: true })).not.toContain("ip_state_mismatch");
+  });
   it("is quiet when the states match or either is unknown", () => {
     expect(shadow_flags(lead({ state: "OH" }))).not.toContain("ip_state_mismatch");
     expect(shadow_flags(lead({ state: null }))).not.toContain("ip_state_mismatch");

@@ -100,15 +100,18 @@ export const disposable_email: Detector = {
   },
 };
 
-// The IP's state against the lead's state. Weak alone — mobile carriers route
-// through hub cities and people travel — so it is measured in shadow before it
-// is allowed to count.
+// The IP's state against the lead's state, on non-mobile devices only. Phones
+// on carrier networks geolocate to the carrier's hub, not the person: in the
+// Oct 2026 dry run 9 of 11 mismatches were phones placed in OH, TX or VA. A
+// desktop or home connection that sits in another state is the case worth
+// measuring. Still weak alone — people travel — so it stays in shadow.
 export const ip_state_mismatch: Detector = {
   id: "ip_state_mismatch",
   family: "plausibility",
   status: "shadow",
-  description: "The device's IP address locates to a different state than the lead's address.",
+  description: "A home or office connection that locates to a different state than the lead's address.",
   evaluate({ features: f, options }) {
+    if (f.is_mobile === true) return NONE;
     const lead_state = options.lead?.state ?? null;
     const ip_state = to_state_code(f.geo_state);
     if (!lead_state || !ip_state || lead_state === ip_state) return NONE;

@@ -276,15 +276,15 @@ complete list of what runs.
 |---|---|---|---|
 | `placeholder_name` | `placeholder_name` | Placeholder / test names ("First Last", "Test User"), digits, a repeated letter, keyboard mashing (4+ letters, no vowel), first name equal to last | −25 |
 | `disposable_email` | `disposable_email` | Throwaway inbox domains, placeholder addresses (`test@`, `fake@`) | −20 |
-| `ip_state_mismatch` | `ip_state_mismatch` | IP state ≠ the lead's state | −10 |
+| `ip_state_mismatch` | `ip_state_mismatch` | IP state ≠ the lead's state, non-mobile devices only (carrier IPs locate to hub states) | −10 |
 | `phone_unverified` | `phone_unverified` | Lead Prosper's `valid_phone` = False | −5 |
 
 Evidence sentences never repeat the name, email or phone. Names are read at
 scoring time and dropped before the request is stored.
 
 Dry run before release (89 recent leads, mostly real customers): placeholder
-name 0, disposable email 0, IP-state mismatch 11 of 66 (mostly mobile carrier
-hub states — needs refining), `valid_phone` False 19 of 89. Against the five
+name 0, disposable email 0, IP-state mismatch 11 of 66 — 9 of them phones on
+carrier networks, so the check now ignores mobile devices (2 of 66 after), `valid_phone` False 19 of 89. Against the five
 fraud / bad-contact returns: placeholder name caught 1 ("First Last");
 `valid_phone` False was on 4 of 5 — about four times its 21% rate in normal
 traffic, the strongest candidate for promotion.
