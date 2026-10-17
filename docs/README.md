@@ -6,6 +6,7 @@
 |---|---|
 | [SCORING_MODEL.md](SCORING_MODEL.md) | **How a lead is scored.** Every check, weight, threshold, classification, status and response field; observed performance; known limitations |
 | [OPERATIONS.md](OPERATIONS.md) | Endpoints, auth, environment, Lead Prosper and ActiveProspect configuration, outcomes and calibration, deploying, routine tasks, open items |
+| [VERIFICATION_PLAN.md](VERIFICATION_PLAN.md) | Acceptance criteria and schedule for a verified engine by 2026-10-28; return backtest results |
 | [BOT_LAB.md](BOT_LAB.md) | How the engine keeps up with new bots: detector architecture, shadow mode, the agent/human corpus, the monthly run |
 | [TRUSTEDFORM_FEATURE_MAP.md](TRUSTEDFORM_FEATURE_MAP.md) | Research notes on what TrustedForm v4 returns and what each field means. Background, not a spec |
 
