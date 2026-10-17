@@ -301,7 +301,6 @@ from `raw_payload_json` before storing, whatever the trigger sends.
 |---|---|---|
 | Replace the Sold trigger body (§4.2) | Lead Prosper admin | Sold labels |
 | Set `LP_API_KEY` and `CRON_SECRET` in Vercel | Ops | Returns sync |
-| Remove personal data already stored by the Sold trigger (Oct 16–17 rows) | Engineering, with approval | Data minimisation |
 | Lead-data and network checks (roadmap phase 3) | Engineering + Lead Prosper fields + IP-intelligence service | Catching invented people |
 | First-party behaviour sensor on our forms (phase 4) | Engineering + form repo | Agents with real keystrokes |
 | Fix or remove `api.verifiedsubmissions.com` | Ops | Partner-facing URL |
