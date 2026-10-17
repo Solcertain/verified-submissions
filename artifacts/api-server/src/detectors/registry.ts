@@ -4,6 +4,7 @@ import { automation_environment } from "./environment.js";
 import { session_duration } from "./session.js";
 import { consent_language } from "./consent.js";
 import { certificate_page_mismatch, certificate_reuse, stale_certificate } from "./certificate.js";
+import { disposable_email, ip_state_mismatch, phone_unverified, placeholder_name } from "./plausibility.js";
 
 // Every check the engine runs, in order. Order only affects the order of
 // sentences in vs_reason, never the score.
@@ -22,4 +23,9 @@ export const DETECTORS: readonly Detector[] = [
   stale_certificate,
   certificate_reuse,
   certificate_page_mismatch,
+  // Shadow since 2026-10-17: measured on live traffic, not yet scored.
+  placeholder_name,
+  disposable_email,
+  ip_state_mismatch,
+  phone_unverified,
 ];

@@ -21,6 +21,7 @@ import {
 import { append_review_row } from "./google_sheets.js";
 import { dispatch_outbound_webhook } from "./webhook_dispatcher.js";
 import { is_certificate_reused, read_landing_page_url } from "./certificate_integrity.js";
+import { read_lead_fields, storable_payload, type LeadFields } from "./lead_fields.js";
 import {
   save_submission,
   get_submission_by_certificate,
@@ -63,6 +64,7 @@ export type ScoreAndRouteOutcome =
       required_consent_terms: string[] | undefined;
       certificate_reused: boolean;
       landing_page_url: string | undefined;
+      lead: LeadFields;
     }
   | {
       kind: "claim_failed";
@@ -79,6 +81,7 @@ export type ScoreAndRouteOutcome =
       required_consent_terms: string[] | undefined;
       certificate_reused: boolean;
       landing_page_url: string | undefined;
+      lead: LeadFields;
       score: ScoreResult;
       routing: RoutingResult;
       sheet_result: SheetResult;
@@ -156,6 +159,7 @@ export async function scoreAndRouteLead(
       : undefined;
 
   const landing_page_url = read_landing_page_url(input.raw_payload);
+  const lead = read_lead_fields(input.raw_payload);
 
   // Dedup cache — return a previously stored result unless forced.
   if (!input.force) {
@@ -176,6 +180,7 @@ export async function scoreAndRouteLead(
           input.raw_payload,
         ),
         landing_page_url,
+        lead,
       };
     }
   }
@@ -228,6 +233,7 @@ export async function scoreAndRouteLead(
   const authenticity = score_authenticity(features, {
     required_consent_terms: consent_terms,
     landing_page_url,
+    lead,
   });
   const score = to_score_result(authenticity, legacy_score.metrics);
 
@@ -292,7 +298,8 @@ export async function scoreAndRouteLead(
   const saved = await save_submission({
     certificate_url,
     certificate_id: normalized.certificate_id || undefined,
-    raw_payload_json: input.raw_payload,
+    // Names are read for scoring and not kept; see lead_fields.storable_payload.
+    raw_payload_json: storable_payload(input.raw_payload),
     trustedform_raw_json: claim_result.data,
     parsed_submission_json: {
       legacy: parsed_lead_payload,
@@ -304,6 +311,9 @@ export async function scoreAndRouteLead(
       classification: authenticity.classification,
       consent: authenticity.consent,
       review_required: authenticity.review_required,
+      // What shadow checks would have reported, kept so a candidate check can
+      // be measured against this lead's outcome later.
+      shadow_findings: authenticity.shadow_findings,
       legacy: legacy_score,
     } as unknown as Record<string, unknown>,
     status: score.status,
@@ -319,6 +329,7 @@ export async function scoreAndRouteLead(
     required_consent_terms: consent_terms,
     certificate_reused: false,
     landing_page_url,
+    lead,
     score,
     routing,
     sheet_result,

@@ -55,7 +55,7 @@ phone validity and line type, area code against state.
 | Oct 17 | Returns sync live, backfill, categories tuned; one model everywhere; Sold trigger fixed | done |
 | Oct 17–20 | Remove personal data from the 13 early Sold-trigger rows | Engineering, needs permission |
 | Oct 17 | Add `landing_page_url`, `first_name`, `last_name`, `state`, `valid_phone` to the pre-ping body — **done**, verified on a live lead; page-mismatch check active | done |
-| Oct 20–22 | Lead-data detectors in **shadow**: placeholder / junk names, invalid phone (`valid_phone`), low phone activity, phone area code vs state | Engineering |
+| Oct 17 | Lead-data detectors in **shadow**: placeholder name, disposable email, IP state vs lead state, `valid_phone` — **live** (area-code check deferred until an authoritative area-code table is sourced) | done |
 | Oct 20–24 | Bot lab run 1 on a **test copy** of the form: ChatGPT agent, one open-source agent, Claude computer use | Engineering + test form |
 | Oct 22–27 | Shadow findings reviewed against live traffic; promote what is clean | Engineering |
 | Oct 27 | Refresh human baseline with Oct 17–27 own-form traffic | Engineering |
@@ -73,12 +73,16 @@ check is promoted only if it stays quiet on real customers.
 
 - **Volume.** About 20–45 own-form leads a day and few verification returns —
   A7 will be directional on Oct 28, not statistically settled.
-- **`valid_phone` is not yet trustworthy.** In 89 recent leads it was `False`
-  on 19, yet 14 of those sold — mostly scoring 90+ — and none was returned; the
-  one return in the sample had `valid_phone = True`. It may flag VoIP or
-  landlines rather than dead numbers. It enters as a shadow signal only, and
-  `phone_activity_score` is never populated, so it is not used at all. A real
-  line-type / reachability lookup may be needed for the phone checks.
+- **`valid_phone` is promising but noisy.** It is `False` on 21% of normal
+  traffic, but on 4 of the 5 fraud / bad-contact returns — about four times as
+  often. (An earlier reading that it "does not predict returns" was premature:
+  the recent leads checked had mostly not had time to be returned.) One in five
+  good leads also carries it, so it needs a moderate weight, not a veto.
+  `phone_activity_score` is never populated and is not used.
+- **IP state vs lead state is noisy on mobile.** 11 of 66 recent leads
+  mismatched, mostly phones on carrier networks that geolocate to hub states
+  (OH, TX, VA). Before promotion it should ignore mobile carrier IPs or only
+  count non-neighbouring states.
 - **Lead Prosper field timing.** `valid_phone` must be computed before the
   pre-ping runs; if Lead Prosper validates after, the check has to read it from
   the outcome instead.

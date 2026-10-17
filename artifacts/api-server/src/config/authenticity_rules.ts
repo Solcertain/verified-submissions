@@ -82,6 +82,15 @@ export const AUTOMATION_ENVIRONMENT = 15;
 export const STALE_CERTIFICATE_SECONDS = 1800;
 export const STALE_CERTIFICATE = 15;
 
+// --- Plausibility (shadow) ---
+// Proposed weights for the lead-data checks. Their detectors run in shadow, so
+// these values are only what shadow_findings report a check WOULD cost; they
+// take effect when a check is promoted to active in a new MODEL_VERSION.
+export const PLACEHOLDER_NAME = 25;
+export const DISPOSABLE_EMAIL = 20;
+export const IP_STATE_MISMATCH = 10;
+export const PHONE_UNVERIFIED = 5;
+
 // --- Certificate integrity ---
 // A certificate presented for a different lead than the one that first claimed
 // it, or captured on a different site than the lead's landing page, does not

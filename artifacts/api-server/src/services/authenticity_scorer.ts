@@ -1,4 +1,5 @@
 import type { BehaviouralFeatures } from "./feature_extractor.js";
+import type { LeadFields } from "./lead_fields.js";
 import * as R from "../config/authenticity_rules.js";
 import { DETECTORS } from "../detectors/registry.js";
 import type { Detector, ShadowFinding } from "../detectors/types.js";
@@ -100,6 +101,8 @@ export interface ScoreOptions {
   // The lead's landing page as reported by Lead Prosper, compared against the
   // page TrustedForm actually recorded.
   landing_page_url?: string;
+  // The lead's own details, for plausibility checks.
+  lead?: LeadFields;
 }
 
 export function score_authenticity(

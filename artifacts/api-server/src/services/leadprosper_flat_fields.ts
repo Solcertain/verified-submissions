@@ -165,6 +165,7 @@ export function mapToLeadProsperFlatFields(
         score_authenticity(outcome.features, {
           required_consent_terms: outcome.required_consent_terms,
           landing_page_url: outcome.landing_page_url,
+          lead: outcome.lead,
         }),
         outcome.parsed_lead.certificate_id || certificate_id_from_url(outcome.certificate_url),
         outcome.features.seconds_on_page,
@@ -190,6 +191,7 @@ export function mapToLeadProsperFlatFields(
           required_consent_terms: outcome.required_consent_terms,
           certificate_reused: outcome.certificate_reused,
           landing_page_url: outcome.landing_page_url,
+          lead: outcome.lead,
         }),
         stored_certificate_id(outcome.parsed_lead) ||
           certificate_id_from_url(outcome.certificate_url),

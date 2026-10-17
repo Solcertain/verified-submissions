@@ -81,6 +81,7 @@ router.post("/score-and-route", require_api_key, async (req: Request, res: Respo
             required_consent_terms: outcome.required_consent_terms,
             certificate_reused: outcome.certificate_reused,
             landing_page_url: outcome.landing_page_url,
+            lead: outcome.lead,
           })
         : null;
       res.json({

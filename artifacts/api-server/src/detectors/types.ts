@@ -12,7 +12,8 @@ export type DetectorFamily =
   | "session" // time on page
   | "environment" // device, browser, network
   | "consent" // whether the consent is legally meaningful
-  | "certificate"; // whether the certificate belongs to this lead
+  | "certificate" // whether the certificate belongs to this lead
+  | "plausibility"; // whether the person described by the lead looks real
 
 // active: findings move the score and appear in risk_flags.
 // shadow: findings are computed and reported in shadow_findings only, so a new
