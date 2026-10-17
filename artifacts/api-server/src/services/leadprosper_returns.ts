@@ -86,7 +86,19 @@ export function to_return_outcome(lead: LpLead): OutcomePayload {
   };
 }
 
-type Fetch = typeof fetch;
+// Only what this module uses of a fetch response, declared here rather than
+// relying on the global Response type, which the Vercel build does not provide.
+interface FetchResponse {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}
+export type Fetch = (
+  url: string,
+  init: { headers: Record<string, string>; signal: AbortController["signal"] },
+) => Promise<FetchResponse>;
+
+const default_fetch = fetch as unknown as Fetch;
 
 async function lp_get(path: string, api_key: string, fetch_impl: Fetch): Promise<Record<string, unknown>> {
   const controller = new AbortController();
@@ -106,7 +118,7 @@ async function lp_get(path: string, api_key: string, fetch_impl: Fetch): Promise
 export async function fetch_returned_leads(
   params: { campaign: string; start_date: string; end_date: string },
   api_key: string,
-  fetch_impl: Fetch = fetch,
+  fetch_impl: Fetch = default_fetch,
 ): Promise<LpLead[]> {
   const returned: LpLead[] = [];
   let cursor: string | null = null;

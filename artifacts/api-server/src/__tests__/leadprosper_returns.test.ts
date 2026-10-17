@@ -5,6 +5,7 @@ import {
   to_return_outcome,
   VERIFICATION_CATEGORIES,
   type LpLead,
+  type Fetch,
 } from "../services/leadprosper_returns.js";
 import { scrub_pii } from "../services/pii.js";
 
@@ -85,7 +86,7 @@ describe("fetch_returned_leads", () => {
     const fake = (async (url: string) => {
       urls.push(url);
       return { ok: true, status: 200, json: async () => pages[urls.length - 1] };
-    }) as unknown as typeof fetch;
+    }) as unknown as Fetch;
 
     const leads = await fetch_returned_leads(
       { campaign: "23668", start_date: "2026-10-01", end_date: "2026-10-17" },
@@ -99,7 +100,7 @@ describe("fetch_returned_leads", () => {
   });
 
   it("surfaces an API error instead of reporting zero returns", async () => {
-    const fake = (async () => ({ ok: false, status: 401, json: async () => ({}) })) as unknown as typeof fetch;
+    const fake = (async () => ({ ok: false, status: 401, json: async () => ({}) })) as unknown as Fetch;
     await expect(
       fetch_returned_leads({ campaign: "23668", start_date: "a", end_date: "b" }, "bad", fake),
     ).rejects.toThrow("401");

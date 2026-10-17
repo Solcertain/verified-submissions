@@ -1,8 +1,6 @@
 import { logger } from "../lib/logger.js";
 import { has_outcome, save_outcome } from "./outcome_store.js";
-import { fetch_returned_leads, to_return_outcome } from "./leadprosper_returns.js";
-
-type Fetch = typeof fetch;
+import { fetch_returned_leads, to_return_outcome, type Fetch } from "./leadprosper_returns.js";
 
 export interface SyncResult {
   campaign: string;
