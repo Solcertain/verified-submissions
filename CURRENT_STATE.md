@@ -1,3 +1,5 @@
+> **Historical document — superseded.** This describes an earlier design and does not match the running system. Current documentation: [docs/README.md](docs/README.md).
+
 # Verified Submissions — Current State
 
 _Snapshot of where the project stands as of this work session._

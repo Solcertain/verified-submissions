@@ -1,0 +1,248 @@
+# Operations Guide
+
+How the scoring engine is deployed, wired into Lead Prosper, fed with
+outcomes, and run day to day. For how a score is calculated, see
+[SCORING_MODEL.md](SCORING_MODEL.md).
+
+Last verified: 2026-10-17.
+
+---
+
+## 1. System map
+
+```
+Consumer ──► solarenergynerds.com/form-step  (TrustedForm script, tagged consent)
+                │
+                ▼
+         Lead Prosper campaign 23668 "Solar Campaign #1"
+                │ pre-ping (data append)
+                ▼
+   POST /api/leadprosper/pre-ping ──► TrustedForm v4 claim (insights + verify + scans)
+                │                            │
+                │ vs_* fields                ▼
+                ▼                      Neon Postgres: lead_submissions
+         Lead Prosper routes / sells
+                │ campaign triggers
+                ▼
+   POST /api/leadprosper/outcome/<token> ──► Neon Postgres: lead_outcomes
+```
+
+| Component | Where |
+|---|---|
+| Repository | `Solcertain/verified-submissions` (upstream `jwelle/verified-submissions`) |
+| Service | `artifacts/api-server` — Express 5, TypeScript, esbuild bundle |
+| Hosting | Vercel project `verified-submissions-api` |
+| Production URL | `https://verified-submissions-api.vercel.app` |
+| Database | Neon Postgres (`DATABASE_URL`) |
+| Custom domain | `api.verifiedsubmissions.com` — **does not resolve**; do not give it to partners |
+
+---
+
+## 2. Endpoints
+
+| Method & path | Auth | Purpose |
+|---|---|---|
+| `GET /api/healthz` | none | Liveness: `{"status":"ok"}` |
+| `POST /api/leadprosper/pre-ping` | `x-api-key` | **The production scoring endpoint.** Returns flat `vs_*` fields |
+| `POST /api/leadprosper/outcome/:token` | secret path token | Records what happened to a lead |
+| `POST /api/score-and-route` | `x-api-key` | Generic claim + legacy score + routing. Supports `?force=true` to re-claim. Used by the bot lab to capture fixtures |
+| `POST /api/score-and-route/from-text` | `x-api-key` | Same, from pasted certificate text |
+| `POST /api/score-lead`, `/score-lead/from-text` | `x-api-key` | Legacy scorer only |
+
+The generic and legacy endpoints return the **legacy** model, not the one in
+SCORING_MODEL.md (see its §12, item 6).
+
+### Authentication
+
+- `x-api-key` is compared in constant time against `INTERNAL_API_KEY`. **If
+  `INTERNAL_API_KEY` is unset, protected endpoints fail open** (log a warning
+  and allow the request). Production has it set.
+- The outcome endpoint uses a separate secret, `LP_CALLBACK_TOKEN`, in the URL
+  path. That was chosen when triggers were believed to expose only a URL; the
+  HTTP action does have a Headers field, so the token could move to a header
+  later (a URL secret can appear in logs). It **fails closed**: unset token → 503; wrong token → 401. It grants nothing but
+  appending an outcome row. Rotating it does not affect scoring.
+
+---
+
+## 3. Environment variables
+
+| Variable | Required | Used for |
+|---|---|---|
+| `ACTIVEPROSPECT_API_KEY` | yes | TrustedForm claims (Basic auth) |
+| `INTERNAL_API_KEY` | yes | `x-api-key` on scoring endpoints |
+| `LP_CALLBACK_TOKEN` | yes | Outcome endpoint path secret |
+| `DATABASE_URL` | yes | Neon Postgres |
+| `GOOGLE_SHEETS_ENABLED`, `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEET_NAME` | no | Legacy review-row export |
+| `OUTBOUND_WEBHOOK_ENABLED`, `OUTBOUND_WEBHOOK_URL`, `CRM_WEBHOOK_URL`, `NOTIFY_WEBHOOK_URL` | no | Legacy routing |
+| `LOG_LEVEL` | no | pino log level |
+
+Set them in Vercel project settings. `.env.local` in `artifacts/api-server` is a
+local copy for development and must never be committed.
+
+---
+
+## 4. Lead Prosper configuration (campaign 23668)
+
+### 4.1 Pre-ping (scoring)
+
+The campaign calls `POST /api/leadprosper/pre-ping` with the `x-api-key` header
+and maps the returned `vs_*` fields into same-named custom fields.
+
+Body currently sent: `email`, `phone`, `lp_lead_id`, `trustedform_cert_url`.
+
+**To add (pending):** `landing_page_url` mapped to the lead's landing page
+field. This switches on the certificate page-mismatch check.
+
+Optional per campaign: `consent_terms` (comma-separated required phrasing, for
+a campaign whose disclosure is worded differently from the solar one) and
+`advertiser_name`.
+
+### 4.2 Outcome triggers
+
+Lead Prosper trigger conditions offer only **Any Status, Accepted, Duplicated
+and Error** — there is no "Returned". So outcomes use two triggers with a
+hardcoded label each, and returns are pulled from the Lead Prosper API.
+
+| Trigger | Id | Condition | Body |
+|---|---|---|---|
+| Verified Submission Sold | 13720 | Lead Status = Accepted | see below |
+| Verified Submission Unsold | 16001 | Lead Status = Error | see below |
+
+Both: HTTP POST, JSON, URL
+`https://verified-submissions-api.vercel.app/api/leadprosper/outcome/<LP_CALLBACK_TOKEN>`.
+
+Sold body:
+
+```json
+{
+    "lp_lead_id": "{{lp_lead_id}}",
+    "trustedform_cert_url": "{{trustedform_cert_url}}",
+    "status": "sold",
+    "buyer": "{{lp_buyer_name}}",
+    "sell_price": "{{lp_lead_sell_price}}",
+    "vs_analysis_id": "{{vs_analysis_id}}",
+    "vs_score": "{{vs_score}}",
+    "vs_model_version": "{{vs_model_version}}"
+}
+```
+
+Unsold body: the same with `"status": "unsold"`, `"return_reason":
+"{{lp_lead_error_message}}"`, and no `buyer` / `sell_price`.
+
+Send only these fields. The endpoint stores the whole body, so a body that
+includes name, email, phone or address puts personal data into
+`lead_outcomes.raw_payload_json` for no benefit.
+
+**Status 2026-10-17:** Unsold is correct and delivering. **Sold is sending Lead
+Prosper's default 60-field payload** — no `status`, `lp_lead_id`, buyer or
+price, and full personal data. Its rows link to the analysis (via the
+certificate URL) but carry no outcome label. Fix: replace the Sold body with the
+one above.
+
+To check a trigger: open a lead under **Leads → Triggers Log**; a 200 from
+`verified-submissions-api.vercel.app` means it delivered.
+
+### 4.3 ActiveProspect
+
+The Solar Energy Nerds disclosure (`TCPA_TEXT` in
+`sen-site/form-app/src/steps/Submit.jsx`) must be in TrustedForm's **Consent
+Language Manager**. Without it, verify fails on every lead and no lead can earn
+the consent points. **If the disclosure wording changes, update the Consent
+Language Manager the same day.**
+
+---
+
+## 5. Outcomes and calibration
+
+### What each outcome can teach
+
+| Label | Source | Use |
+|---|---|---|
+| Sold | Sold trigger | Weak positive: a buyer accepted it |
+| Unsold — no buyers available | Unsold trigger | **None for authenticity.** Coverage, not quality |
+| Unsold — rejected by filter | Unsold trigger | None for authenticity |
+| Returned + reason | Lead Prosper API (pull) | **The key negative label** when the reason is wrong number, fake, didn't request |
+| Buyer disposition (contacted, wrong number, credit fail …) | Not yet collected | Strongest labels; credit fail etc. feed lead quality, never authenticity |
+| Bot lab agents | Captured fixtures | Guaranteed negatives, on demand |
+
+### Do we need more data?
+
+Yes, but the bottleneck is **negative labels**, not lead volume. Our own form
+produces almost entirely real humans, so more of the same traffic mostly adds
+more confirmed-good leads. What calibrates the engine is confirmed-bad leads,
+and those come from:
+
+1. **Returns with reasons** — pulled from Lead Prosper.
+2. **The bot lab** — each monthly run adds labeled agents immediately.
+3. **Different traffic** — partner and desktop leads, where the engine's
+   judgement actually matters.
+4. **Buyer dispositions**, once a buyer agrees to send them.
+
+Working target before re-weighting: roughly **50 confirmed-bad and several
+hundred confirmed-good leads**, with the bad ones spread across more than one
+source. Until then, threshold changes come from the bot lab and the human
+baseline, not from outcome statistics.
+
+### Tables
+
+`lead_submissions` — one row per claimed certificate: `certificate_url`,
+`certificate_id`, `raw_payload_json` (request body), `trustedform_raw_json`
+(full claim response), `parsed_submission_json` (`{ legacy, features }` —
+features are what the model scores), `score_json` and `status` (**legacy
+model**), `received_at`, `processed_at`.
+
+`lead_outcomes` — one row per outcome callback: `lp_lead_id`,
+`certificate_url`, `outcome`, `buyer`, `sell_price`, `return_reason`,
+`supplier`, `raw_payload_json`, `analysis_id` (linked by normalised certificate
+URL when found; no foreign key, so outcomes for unscored leads are kept).
+
+---
+
+## 6. Deploying
+
+- **Push to `main` deploys production** automatically (Vercel Git
+  integration). `claude/mvp-completion` is kept at the same commit as `main`.
+- Before pushing: `npx vitest run` in `artifacts/api-server`. The bot lab runs
+  as part of it; a red agent or human test blocks the change.
+- After a deploy: Vercel shows the deployment `READY`, `GET /api/healthz`
+  returns ok, and the next lead in Lead Prosper shows the new
+  `vs_model_version`.
+- **Rollback:** promote the previous production deployment in the Vercel
+  dashboard (Deployments → previous → Promote). No database migration is
+  involved in any model change.
+
+### Local development notes
+
+- `routes.test.ts` and `node build.mjs` need the `pg` package, which is not
+  installed in the local checkout; both work on Vercel. All other tests run
+  locally.
+- Line-ending warnings (LF → CRLF) on commit are harmless.
+
+---
+
+## 7. Routine tasks
+
+| Task | How |
+|---|---|
+| Add or change a check | Write it in `src/detectors/`, start in `shadow`, follow [BOT_LAB.md](BOT_LAB.md), bump `MODEL_VERSION` on promotion |
+| Change a weight or threshold | `src/config/authenticity_rules.ts` only; replay the human baseline (bot lab tests) and bump `MODEL_VERSION` |
+| Monthly bot run | [BOT_LAB.md](BOT_LAB.md) |
+| Refresh the human baseline | Quarterly; export recent own-form features, anonymise (remove IP and postal code), replace the file in `fixtures/botlab/humans/` |
+| Rotate `LP_CALLBACK_TOKEN` | Generate a new value, set it in Vercel, redeploy, then update the URL on **both** outcome triggers |
+| Investigate a lead | Find it in Lead Prosper; `vs_analysis_id` is the `lead_submissions.id` with its stored features and full TrustedForm response |
+| Report on a lead | Verdict and score; the signals that mattered, each with one line on why it matters; comparison with the real-traffic baseline; what the engine caught or missed |
+
+---
+
+## 8. Open items
+
+| Item | Owner | Blocks |
+|---|---|---|
+| Replace the Sold trigger body (§4.2) | Lead Prosper admin | Sold labels |
+| Add `landing_page_url` to the pre-ping body (§4.1) | Lead Prosper admin | Page-mismatch check |
+| Pull returns from Lead Prosper into calibration | Engineering | Negative labels |
+| Point the generic endpoints and stored `status` at the current model | Engineering | One model everywhere |
+| Lead-data and network checks (roadmap phase 3) | Engineering + Lead Prosper fields + IP-intelligence service | Catching invented people |
+| First-party behaviour sensor on our forms (phase 4) | Engineering + form repo | Agents with real keystrokes |
+| Fix or remove `api.verifiedsubmissions.com` | Ops | Partner-facing URL |

@@ -1,3 +1,17 @@
+# Verified Submissions
+
+Lead verification engine: scores whether a real person, giving real consent,
+produced each lead, using TrustedForm certificate data. Runs as an Express API
+on Vercel and plugs into Lead Prosper as a pre-ping.
+
+**Documentation: [docs/README.md](docs/README.md)** — start with
+[SCORING_MODEL.md](docs/SCORING_MODEL.md) and [OPERATIONS.md](docs/OPERATIONS.md).
+
+---
+
+_The original notes for this folder follow. They describe the June 2026 source
+docs, which are now historical._
+
 # Verified Submissions Source Docs
 
 This folder contains Markdown source files that can be added to the repo or uploaded into an AI coding tool as project context.

@@ -1,3 +1,5 @@
+> **Historical document — superseded.** This audit predates the insights model, detectors and bot lab. Current documentation: [README.md](README.md).
+
 # Verified Submissions — MVP Status
 
 Repository audit against the behavioral-authenticity MVP defined in the 8-8 prompts.
