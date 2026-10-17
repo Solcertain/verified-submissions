@@ -93,7 +93,12 @@ export async function load_report_rows(
   const ids = subs.map((x) => x.id);
   if (ids.length === 0) return { subs, outcomes: [] };
   const o = await getDb().execute(sql`
-    select analysis_id, outcome, raw_payload_json->>'return_category' as return_category
+    select analysis_id, outcome, received_at,
+           raw_payload_json->>'return_category' as return_category,
+           raw_payload_json->>'engine_status' as engine_status,
+           raw_payload_json->>'engine_score' as engine_score,
+           raw_payload_json->'engine_flags' as engine_flags,
+           raw_payload_json->>'scored_at' as scored_at
     from lead_outcomes
     where analysis_id in (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})`);
 
@@ -101,6 +106,11 @@ export async function load_report_rows(
     analysis_id: (r["analysis_id"] as string) ?? null,
     outcome: (r["outcome"] as string) ?? null,
     return_category: (r["return_category"] as string) ?? null,
+    recorded_at: r["received_at"] ? new Date(String(r["received_at"])) : null,
+    engine_status: (r["engine_status"] as string) ?? null,
+    engine_score: r["engine_score"] == null ? null : Number(r["engine_score"]),
+    engine_flags: Array.isArray(r["engine_flags"]) ? (r["engine_flags"] as string[]) : null,
+    scored_at: r["scored_at"] ? new Date(String(r["scored_at"])) : null,
   }));
   return { subs, outcomes };
 }

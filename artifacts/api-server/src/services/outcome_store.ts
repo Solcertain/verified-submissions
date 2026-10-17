@@ -205,3 +205,115 @@ export async function refresh_return_category(
     .returning({ id: leadOutcomesTable.id });
   return rows.length;
 }
+
+// ── Operator labels ─────────────────────────────────────────────────────────
+//
+// A person who has checked a lead (a buyer call, a fraud investigation) can
+// confirm it as fraud or as genuine. These are the strongest labels we get and
+// the evidence customers see: "the engine held this lead back at intake, and it
+// was later confirmed as fraud".
+//
+// The engine's decision is copied into the label when it is recorded, so the
+// proof does not change if the model or the stored score is updated later.
+
+export const OPERATOR_LABELS = { fraud: "confirmed_fraud", genuine: "confirmed_genuine" } as const;
+export type OperatorLabel = keyof typeof OPERATOR_LABELS;
+
+export interface OperatorLabelInput {
+  analysis_id?: string;
+  certificate_url?: string;
+  lp_lead_id?: string;
+  label: OperatorLabel;
+  reason?: string;
+  labelled_by?: string;
+}
+
+export interface StoredLabel {
+  id: string;
+  analysis_id: string;
+  outcome: string;
+  already_recorded: boolean;
+  engine: { score: number | null; status: string | null; flags: string[]; model_version: string | null; scored_at: string };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Finds the scored lead a label refers to. Returns null when nothing matches;
+// a label we cannot tie to a score proves nothing, so it is not stored.
+async function find_submission(input: OperatorLabelInput) {
+  const t = leadSubmissionsTable;
+  const cols = {
+    id: t.id,
+    received_at: t.received_at,
+    certificate_url: t.certificate_url,
+    status: t.status,
+    score_json: t.score_json,
+    lp_lead_id: sql<string | null>`${t.raw_payload_json}->>'lp_lead_id'`,
+    supplier: sql<string | null>`${t.raw_payload_json}->>'lp_supplier_id'`,
+  };
+  let where;
+  if (input.analysis_id) {
+    if (!UUID.test(input.analysis_id)) return null;
+    where = eq(t.id, input.analysis_id);
+  } else if (input.certificate_url) {
+    where = eq(t.certificate_url, normalize_certificate_url(input.certificate_url));
+  } else if (input.lp_lead_id) {
+    where = sql`${t.raw_payload_json}->>'lp_lead_id' = ${input.lp_lead_id}`;
+  } else {
+    return null;
+  }
+  const rows = await getDb().select(cols).from(t).where(where).orderBy(desc(t.received_at)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function save_operator_label(input: OperatorLabelInput): Promise<StoredLabel | null> {
+  const sub = await find_submission(input);
+  if (!sub) return null;
+
+  const outcome = OPERATOR_LABELS[input.label];
+  const score = (sub.score_json ?? {}) as Record<string, unknown>;
+  const engine = {
+    score: typeof score["value"] === "number" ? (score["value"] as number) : null,
+    status: sub.status ?? null,
+    flags: Array.isArray(score["risk_flags"]) ? (score["risk_flags"] as string[]) : [],
+    model_version: typeof score["model_version"] === "string" ? (score["model_version"] as string) : null,
+    scored_at: sub.received_at.toISOString(),
+  };
+
+  // Recording the same label twice is a no-op, so a retried request or a
+  // double click cannot inflate the counts.
+  const existing = await getDb()
+    .select({ id: leadOutcomesTable.id })
+    .from(leadOutcomesTable)
+    .where(and(eq(leadOutcomesTable.analysis_id, sub.id), eq(leadOutcomesTable.outcome, outcome)))
+    .limit(1);
+  if (existing[0]) return { id: existing[0].id, analysis_id: sub.id, outcome, already_recorded: true, engine };
+
+  const inserted = await getDb()
+    .insert(leadOutcomesTable)
+    .values({
+      lp_lead_id: sub.lp_lead_id,
+      certificate_url: sub.certificate_url,
+      outcome,
+      supplier: sub.supplier,
+      analysis_id: sub.id,
+      raw_payload_json: {
+        source: "manual_review",
+        labelled_by: input.labelled_by?.slice(0, 80) ?? "operator",
+        reason: input.reason?.slice(0, 500) ?? null,
+        return_category: input.label === "fraud" ? "fraud" : null,
+        bears_on_verification: true,
+        engine_score: engine.score,
+        engine_status: engine.status,
+        engine_flags: engine.flags,
+        model_version: engine.model_version,
+        scored_at: engine.scored_at,
+      },
+    })
+    .returning({ id: leadOutcomesTable.id });
+
+  const id = inserted[0]?.id;
+  if (!id) return null;
+  logger.info({ outcome, engine_status: engine.status }, "Recorded operator label");
+  return { id, analysis_id: sub.id, outcome, already_recorded: false, engine };
+}

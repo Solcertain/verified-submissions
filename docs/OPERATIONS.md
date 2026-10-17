@@ -48,7 +48,8 @@ Consumer ──► solarenergynerds.com/form-step  (TrustedForm script, tagged c
 | `POST /api/score-and-route` | `x-api-key` | Generic claim + score + routing (Sheets, webhooks). Supports `?force=true` to re-claim. Used by the bot lab to capture fixtures |
 | `POST /api/score-lead` | `x-api-key` | Claim + score, no routing or storage |
 | `GET /api/cron/sync-returns` | `Authorization: Bearer <CRON_SECRET>` or `x-api-key` | Pulls returned leads from Lead Prosper into `lead_outcomes`. Runs daily via Vercel Cron |
-| `GET /api/reports/verification?days=7` | `x-api-key` (fails closed) | The repeatable verification report: leads, decisions, flags, shadow checks, outcomes and return rate by score band. Aggregates and ids only. Add `&format=md` for the written report |
+| `GET /api/reports/verification?days=7` | `x-api-key` (fails closed) | The repeatable verification report: leads, decisions, flags, shadow checks, outcomes, confirmed fraud caught vs missed, and return rate by score band. Aggregates and ids only. Add `&format=md` for the written report |
+| `POST /api/outcomes/label` | `x-api-key` (fails closed) | Records a person's confirmed verdict (fraud / genuine) on a lead, with the engine's intake decision. See §5 Operator labels |
 | `POST /api/score-and-route/from-text`, `/score-lead/from-text` | `x-api-key` | **Deprecated.** Pasted event text; legacy event-log model only, labelled `legacy-event-log` |
 
 Every certificate-based endpoint uses the model in SCORING_MODEL.md and reaches
@@ -188,6 +189,22 @@ Language Manager the same day.**
 | Returned + reason | Returns sync (pull, daily) | **The key negative label** when the reason is wrong number, fake, didn't request |
 | Buyer disposition (contacted, wrong number, credit fail …) | Not yet collected | Strongest labels; credit fail etc. feed lead quality, never authenticity |
 | Bot lab agents | Captured fixtures | Guaranteed negatives, on demand |
+| Confirmed fraud / confirmed genuine | `POST /api/outcomes/label` (a person who checked the lead) | **The proof.** Each label stores the engine's score, status and flags as they were at intake, so the report can say "caught" or "missed" and that can't change if the model does |
+
+### Operator labels
+
+```
+POST /api/outcomes/label        x-api-key (fails closed)
+{ "lp_lead_id": "ma2QS6EB8JeApcHIt-7B", "label": "fraud", "reason": "buyer call: number not the consumer's", "labelled_by": "stephen" }
+```
+
+Identify the lead by `analysis_id`, `certificate_url` or `lp_lead_id`; `label` is
+`fraud` or `genuine`. Stored as `outcome: confirmed_fraud | confirmed_genuine`
+(not `returned`, so return rates are unaffected). The response gives
+`engine_result`: `caught`, `missed`, `false_alarm` or `correctly_approved`.
+Repeating the same label is a no-op; a different later label replaces the earlier
+one in the report. Keep `reason` free of consumer details. First one recorded:
+lead `bd14ca1c` (2026-10-17), caught by `synthetic_typing`.
 
 ### Returns sync
 

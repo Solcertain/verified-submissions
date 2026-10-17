@@ -24,8 +24,26 @@ export interface ReportSubmission {
 
 export interface ReportOutcome {
   analysis_id: string | null;
-  outcome: string | null; // sold | unsold | returned
+  outcome: string | null; // sold | unsold | returned | confirmed_fraud | confirmed_genuine
   return_category: string | null;
+  recorded_at?: Date | null;
+  // Operator labels carry the engine's decision as it was when the lead
+  // arrived, so the proof cannot drift if the model changes.
+  engine_status?: string | null;
+  engine_score?: number | null;
+  engine_flags?: string[] | null;
+  scored_at?: Date | null;
+}
+
+export interface ConfirmedCase {
+  id: string;
+  label: "fraud" | "genuine";
+  engine_result: "caught" | "missed" | "false_alarm" | "correctly_approved";
+  score: number | null;
+  status: string | null;
+  flags: string[];
+  scored_at: string;
+  confirmed_at: string | null;
 }
 
 const BANDS: [string, number, number][] = [
@@ -82,6 +100,16 @@ export interface VerificationReport {
     // score they had when sold. This is the calibration readout.
     verification_return_rate_by_band: Record<string, { sold: number; verification_returns: number }>;
   };
+  // Leads a person has confirmed as fraud or genuine, set against what the
+  // engine decided at intake. This is the evidence the product rests on.
+  confirmed: {
+    fraud: number;
+    caught: number;
+    missed: number;
+    genuine: number;
+    false_alarms: number;
+    cases: ConfirmedCase[];
+  };
   // Leads the engine held back, for a person to look at. Ids only.
   held_back: { id: string; score: number | null; status: string | null; flags: string[] }[];
   markdown: string;
@@ -125,6 +153,8 @@ export function build_report(
     .filter((s) => s.status === "review" || s.status === "reject")
     .map((s) => ({ id: s.id, score: s.score, status: s.status, flags: s.risk_flags }));
 
+  const confirmed = confirmed_cases(current, by_analysis);
+
   const days = Math.max(1, Math.round((period.end.getTime() - period.start.getTime()) / 86_400_000));
 
   const report: Omit<VerificationReport, "markdown"> = {
@@ -152,14 +182,81 @@ export function build_report(
       verification_returns: returned_rows.filter((o) => VERIFICATION_RETURNS.has(o.return_category ?? "")).length,
       verification_return_rate_by_band: rate,
     },
+    confirmed: {
+      fraud: confirmed.filter((c) => c.label === "fraud").length,
+      caught: confirmed.filter((c) => c.engine_result === "caught").length,
+      missed: confirmed.filter((c) => c.engine_result === "missed").length,
+      genuine: confirmed.filter((c) => c.label === "genuine").length,
+      false_alarms: confirmed.filter((c) => c.engine_result === "false_alarm").length,
+      cases: confirmed,
+    },
     held_back,
   };
 
   return { ...report, markdown: to_markdown(report) };
 }
 
+const HELD_BACK = new Set(["review", "reject"]);
+const LABELS: Record<string, "fraud" | "genuine"> = { confirmed_fraud: "fraud", confirmed_genuine: "genuine" };
+
+// One verdict per lead: if a lead was relabelled, the latest label stands.
+function confirmed_cases(subs: ReportSubmission[], by_analysis: Map<string, ReportOutcome[]>): ConfirmedCase[] {
+  const out: ConfirmedCase[] = [];
+  for (const s of subs) {
+    const labels = (by_analysis.get(s.id) ?? [])
+      .filter((o) => o.outcome && LABELS[o.outcome])
+      .sort((a, b) => (a.recorded_at?.getTime() ?? 0) - (b.recorded_at?.getTime() ?? 0));
+    const latest = labels[labels.length - 1];
+    if (!latest) continue;
+    const label = LABELS[latest.outcome!]!;
+    const status = latest.engine_status ?? s.status;
+    const held = HELD_BACK.has(status ?? "");
+    out.push({
+      id: s.id,
+      label,
+      engine_result: label === "fraud" ? (held ? "caught" : "missed") : held ? "false_alarm" : "correctly_approved",
+      score: latest.engine_score ?? s.score,
+      status,
+      flags: latest.engine_flags ?? s.risk_flags,
+      scored_at: (latest.scored_at ?? s.received_at).toISOString(),
+      confirmed_at: latest.recorded_at ? latest.recorded_at.toISOString() : null,
+    });
+  }
+  return out.sort((a, b) => b.scored_at.localeCompare(a.scored_at));
+}
+
+function when(iso: string | null): string {
+  return iso ? `${iso.slice(0, 16).replace("T", " ")} UTC` : "—";
+}
+
+const RESULT_TEXT: Record<ConfirmedCase["engine_result"], string> = {
+  caught: "**Caught**",
+  missed: "**Missed**",
+  false_alarm: "False alarm",
+  correctly_approved: "Correctly approved",
+};
+
+function confirmed_markdown(c: VerificationReport["confirmed"]): string {
+  if (c.cases.length === 0) return "_No leads confirmed by a person in this period yet._\n";
+  const lines: string[] = [];
+  if (c.fraud) {
+    lines.push(
+      `- **${c.caught} of ${c.fraud} confirmed fraud leads were held back by the engine when they arrived**${c.missed ? `; ${c.missed} got through` : ""}.`,
+    );
+  }
+  if (c.genuine) lines.push(`- ${c.genuine} leads confirmed genuine; ${c.false_alarms} of them had been held back for review.`);
+  lines.push("");
+  for (const k of c.cases) {
+    const why = k.flags.map((f) => `\`${f}\`${FLAG_MEANING[f] ? ` (${FLAG_MEANING[f]})` : ""}`).join("; ");
+    lines.push(
+      `- ${RESULT_TEXT[k.engine_result]} — \`${k.id.slice(0, 8)}\`, confirmed ${k.label}. Scored ${k.score ?? "—"} and ${k.status ?? "—"} at ${when(k.scored_at)}; confirmed ${when(k.confirmed_at)}.${why ? ` Why: ${why}.` : ""}`,
+    );
+  }
+  return lines.join("\n") + "\n";
+}
+
 const FLAG_MEANING: Record<string, string> = {
-  synthetic_typing: "text entered with no keystrokes — a person cannot type without pressing keys",
+  synthetic_typing: "text appeared without matching keystrokes — a person cannot type without pressing keys",
   automation_environment: "a desktop Linux machine on an imprecise IP — the shape of a cloud-hosted browser",
   superhuman_typing_speed: "typing faster than any person sustains",
   stale_certificate: "consent captured long before the lead was sold",
@@ -203,8 +300,10 @@ function to_markdown(r: Omit<VerificationReport, "markdown">): string {
 - **${L.scored} leads scored**, ${L.current_model} under the current model${L.rescored ? ` (${L.rescored} of them rescored from stored data)` : ""}${L.legacy_model ? `; ${L.legacy_model} with no stored data to rescore` : ""}.
 - **${approved} approved, ${review} sent to review, ${reject} rejected** — ${pct(review + reject, L.current_model)} held back.
 - **Consent verified on ${L.consent_verified} (${pct(L.consent_verified, L.current_model)})** — the disclosure matched the approved language on file.
-- **${r.outcomes.returned} returns**, of which **${r.outcomes.verification_returns}** were verification problems (fraud, bad contact, consent); the rest were territory and fit.
+${r.confirmed.fraud ? `- **Confirmed fraud: ${r.confirmed.caught} of ${r.confirmed.fraud} caught at intake.**\n` : ""}- **${r.outcomes.returned} returns**, of which **${r.outcomes.verification_returns}** were verification problems (fraud, bad contact, consent); the rest were territory and fit.
 
+## Confirmed by a person
+${confirmed_markdown(r.confirmed)}
 ## Where leads came from
 ${table(Object.entries(L.by_source), ["Source", "Leads"])}
 ${L.mobile} of ${L.current_model} on phones.

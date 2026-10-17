@@ -71,3 +71,62 @@ describe("build_report", () => {
     expect(r.markdown).toContain("Checks being measured");
   });
 });
+
+describe("confirmed leads", () => {
+  const subs = [
+    // Caught: held back at intake, later confirmed fraud. Its stored status was
+    // later changed, but the label's snapshot is what the proof uses.
+    sub({ id: "f1", score: 98, status: "approved", received_at: new Date("2026-10-17T20:32:21Z") }),
+    sub({ id: "f2", score: 91 }), // missed: approved, confirmed fraud
+    sub({ id: "g1", score: 55, status: "review", risk_flags: ["brief_session"] }), // false alarm
+    sub({ id: "g2", score: 95 }), // relabelled: fraud, then genuine
+  ];
+  const outcomes: ReportOutcome[] = [
+    { analysis_id: "f1", outcome: "unsold", return_category: null },
+    {
+      analysis_id: "f1",
+      outcome: "confirmed_fraud",
+      return_category: "fraud",
+      recorded_at: new Date("2026-10-17T20:41:42Z"),
+      engine_status: "review",
+      engine_score: 58,
+      engine_flags: ["synthetic_typing"],
+      scored_at: new Date("2026-10-17T20:32:21Z"),
+    },
+    { analysis_id: "f2", outcome: "confirmed_fraud", return_category: "fraud", recorded_at: new Date("2026-10-18T00:00:00Z") },
+    { analysis_id: "g1", outcome: "confirmed_genuine", return_category: null, recorded_at: new Date("2026-10-18T00:00:00Z") },
+    { analysis_id: "g2", outcome: "confirmed_fraud", return_category: "fraud", recorded_at: new Date("2026-10-18T00:00:00Z") },
+    { analysis_id: "g2", outcome: "confirmed_genuine", return_category: null, recorded_at: new Date("2026-10-19T00:00:00Z") },
+  ];
+  const r = build_report(subs, outcomes, period);
+
+  it("scores the engine against what people confirmed", () => {
+    expect(r.confirmed).toMatchObject({ fraud: 2, caught: 1, missed: 1, genuine: 2, false_alarms: 1 });
+  });
+
+  it("uses the decision recorded at intake, not the current one", () => {
+    const f1 = r.confirmed.cases.find((c) => c.id === "f1")!;
+    expect(f1).toMatchObject({ engine_result: "caught", score: 58, status: "review", flags: ["synthetic_typing"] });
+    expect(f1.scored_at < f1.confirmed_at!).toBe(true);
+  });
+
+  it("lets the latest label stand", () => {
+    expect(r.confirmed.cases.find((c) => c.id === "g2")!.engine_result).toBe("correctly_approved");
+  });
+
+  it("does not count a confirmation as a return", () => {
+    expect(r.outcomes.returned).toBe(0);
+  });
+
+  it("writes the evidence into the report", () => {
+    expect(r.markdown).toContain("Confirmed fraud: 1 of 2 caught at intake.");
+    expect(r.markdown).toContain("**Caught** — `f1`, confirmed fraud. Scored 58 and review at 2026-10-17 20:32 UTC; confirmed 2026-10-17 20:41 UTC.");
+    expect(r.markdown).toContain("**Missed** — `f2`");
+  });
+
+  it("says so plainly when nothing is confirmed", () => {
+    const empty = build_report([sub({ id: "x" })], [], period);
+    expect(empty.markdown).toContain("No leads confirmed by a person in this period yet.");
+    expect(empty.markdown).not.toContain("Confirmed fraud:");
+  });
+});

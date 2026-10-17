@@ -37,3 +37,12 @@ export function require_api_key(req: Request, res: Response, next: NextFunction)
     error: "Unauthorized: missing or invalid x-api-key header",
   });
 }
+
+// Fail-CLOSED check for internal business endpoints (reports, labels): with no
+// INTERNAL_API_KEY configured, nobody is let in.
+export function internal_key_matches(req: Request): boolean {
+  const expected = process.env["INTERNAL_API_KEY"];
+  const provided = req.header("x-api-key") ?? "";
+  if (!expected || !provided) return false;
+  return safe_equal(provided, expected);
+}
