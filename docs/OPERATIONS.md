@@ -48,6 +48,7 @@ Consumer ──► solarenergynerds.com/form-step  (TrustedForm script, tagged c
 | `POST /api/score-and-route` | `x-api-key` | Generic claim + score + routing (Sheets, webhooks). Supports `?force=true` to re-claim. Used by the bot lab to capture fixtures |
 | `POST /api/score-lead` | `x-api-key` | Claim + score, no routing or storage |
 | `GET /api/cron/sync-returns` | `Authorization: Bearer <CRON_SECRET>` or `x-api-key` | Pulls returned leads from Lead Prosper into `lead_outcomes`. Runs daily via Vercel Cron |
+| `GET /api/reports/verification?days=7` | `x-api-key` (fails closed) | The repeatable verification report: leads, decisions, flags, shadow checks, outcomes and return rate by score band. Aggregates and ids only. Add `&format=md` for the written report |
 | `POST /api/score-and-route/from-text`, `/score-lead/from-text` | `x-api-key` | **Deprecated.** Pasted event text; legacy event-log model only, labelled `legacy-event-log` |
 
 Every certificate-based endpoint uses the model in SCORING_MODEL.md and reaches

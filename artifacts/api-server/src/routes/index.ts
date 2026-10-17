@@ -5,6 +5,7 @@ import scoreAndRouteRouter from "./score_and_route.js";
 import leadProsperRouter from "./leadprosper.js";
 import leadProsperOutcomeRouter from "./leadprosper_outcome.js";
 import cronRouter from "./cron.js";
+import reportsRouter from "./reports.js";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(scoreAndRouteRouter);
 router.use(leadProsperRouter);
 router.use(leadProsperOutcomeRouter);
 router.use(cronRouter);
+router.use(reportsRouter);
 
 export default router;
