@@ -66,6 +66,7 @@ describe("build_report", () => {
 
   it("writes the report with plain-English meaning for each flag", () => {
     expect(r.markdown).toContain("5 leads scored");
+    expect(r.leads.rescored).toBe(0);
     expect(r.markdown).toContain("a person cannot type without pressing keys");
     expect(r.markdown).toContain("Checks being measured");
   });

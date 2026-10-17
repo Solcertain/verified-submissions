@@ -2,6 +2,9 @@ import { sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import type { ReportOutcome, ReportSubmission } from "./verification_report.js";
+import { read_stored_features } from "./leadprosper_flat_fields.js";
+import { score_authenticity } from "./authenticity_scorer.js";
+import { status_for } from "./verdict.js";
 
 // Reads exactly the columns the verification report needs — scores, flags,
 // outcomes and the lead's source — and nothing personal. Connection is lazy,
@@ -39,13 +42,38 @@ export async function load_report_rows(
            score_json->'shadow_findings' as shadow_findings,
            raw_payload_json->>'lead_source' as lead_source,
            parsed_submission_json->'features'->>'page_url' as page_url,
-           parsed_submission_json->'features'->>'is_mobile' as is_mobile
+           parsed_submission_json->'features'->>'is_mobile' as is_mobile,
+           case when score_json->>'model_version' is null then parsed_submission_json end as stored_for_rescore
     from lead_submissions
     where received_at >= ${start.toISOString()} and received_at < ${end.toISOString()}`);
 
   const subs: ReportSubmission[] = (s.rows as Record<string, unknown>[]).map((r) => {
     const legacy_version = r["model_version"] === "legacy-event-log";
     const shadow = Array.isArray(r["shadow_findings"]) ? (r["shadow_findings"] as { flag?: string }[]) : [];
+    const source = (typeof r["lead_source"] === "string" && r["lead_source"]) || host(r["page_url"]) || "unknown";
+    const is_mobile = r["is_mobile"] == null ? null : r["is_mobile"] === "true";
+
+    // Rows stored before 2026-10-17 hold the legacy score, though the lead
+    // was scored by the insights model at the time. Their features are
+    // stored, so rescore them under the current model, as repeat requests do.
+    const stored = r["stored_for_rescore"] ? read_stored_features(r["stored_for_rescore"]) : null;
+    if (stored) {
+      const a = score_authenticity(stored);
+      return {
+        id: String(r["id"]),
+        received_at: new Date(String(r["received_at"])),
+        score: a.score,
+        status: status_for(a),
+        classification: a.classification,
+        model_version: a.model_version,
+        consent_verdict: a.consent.verdict,
+        risk_flags: a.risk_flags,
+        shadow_flags: a.shadow_findings.map((f) => f.flag).filter((f): f is string => !!f),
+        source,
+        is_mobile,
+        rescored: true,
+      };
+    }
     return {
       id: String(r["id"]),
       received_at: new Date(String(r["received_at"])),
@@ -56,8 +84,9 @@ export async function load_report_rows(
       consent_verdict: (r["consent_verdict"] as string) ?? null,
       risk_flags: Array.isArray(r["risk_flags"]) ? (r["risk_flags"] as string[]) : [],
       shadow_flags: shadow.map((f) => f.flag).filter((f): f is string => !!f),
-      source: (typeof r["lead_source"] === "string" && r["lead_source"]) || host(r["page_url"]) || "unknown",
-      is_mobile: r["is_mobile"] == null ? null : r["is_mobile"] === "true",
+      source,
+      is_mobile,
+      rescored: false,
     };
   });
 

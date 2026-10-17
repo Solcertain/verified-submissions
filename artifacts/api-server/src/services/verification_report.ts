@@ -17,6 +17,9 @@ export interface ReportSubmission {
   shadow_flags: string[];
   source: string; // lead_source when sent, else the certificate's site
   is_mobile: boolean | null;
+  // Stored before scores were kept in the current format; rescored from its
+  // stored features under the current model for this report.
+  rescored?: boolean;
 }
 
 export interface ReportOutcome {
@@ -57,6 +60,7 @@ export interface VerificationReport {
   leads: {
     scored: number;
     current_model: number;
+    rescored: number;
     legacy_model: number;
     by_status: Record<string, number>;
     by_classification: Record<string, number>;
@@ -128,6 +132,7 @@ export function build_report(
     leads: {
       scored: subs.length,
       current_model: current.length,
+      rescored: current.filter((s) => s.rescored).length,
       legacy_model: subs.length - current.length,
       by_status: count(current, (s) => s.status),
       by_classification: count(current, (s) => s.classification),
@@ -195,7 +200,7 @@ function to_markdown(r: Omit<VerificationReport, "markdown">): string {
   return `# Verification report — ${r.period.start} to ${r.period.end}
 
 ## Headline
-- **${L.scored} leads scored** (${L.current_model} on the current model${L.legacy_model ? `, ${L.legacy_model} legacy` : ""}).
+- **${L.scored} leads scored**, ${L.current_model} under the current model${L.rescored ? ` (${L.rescored} of them rescored from stored data)` : ""}${L.legacy_model ? `; ${L.legacy_model} with no stored data to rescore` : ""}.
 - **${approved} approved, ${review} sent to review, ${reject} rejected** — ${pct(review + reject, L.current_model)} held back.
 - **Consent verified on ${L.consent_verified} (${pct(L.consent_verified, L.current_model)})** — the disclosure matched the approved language on file.
 - **${r.outcomes.returned} returns**, of which **${r.outcomes.verification_returns}** were verification problems (fraud, bad contact, consent); the rest were territory and fit.
