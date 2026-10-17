@@ -1,6 +1,6 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { pgTable, text, uuid, timestamp, jsonb, numeric, index } from "drizzle-orm/pg-core";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, ne, sql } from "drizzle-orm";
 import pg from "pg";
 import { logger } from "../lib/logger.js";
 import { leadSubmissionsTable } from "./submission_store.js";
@@ -179,4 +179,29 @@ export async function has_outcome(lp_lead_id: string, outcome: string): Promise<
     .where(and(eq(leadOutcomesTable.lp_lead_id, lp_lead_id), eq(leadOutcomesTable.outcome, outcome)))
     .limit(1);
   return rows.length > 0;
+}
+
+// Return categories are keyword rules that improve over time. Re-running the
+// sync re-applies the current rules to returns already stored, so a category
+// never stays stuck on an older rule set. Returns how many rows changed.
+export async function refresh_return_category(
+  lp_lead_id: string,
+  category: string,
+  bears_on_verification: boolean,
+): Promise<number> {
+  const patch = JSON.stringify({ return_category: category, bears_on_verification });
+  const rows = await getDb()
+    .update(leadOutcomesTable)
+    .set({
+      raw_payload_json: sql`coalesce(${leadOutcomesTable.raw_payload_json}, '{}'::jsonb) || ${patch}::jsonb`,
+    })
+    .where(
+      and(
+        eq(leadOutcomesTable.lp_lead_id, lp_lead_id),
+        eq(leadOutcomesTable.outcome, "returned"),
+        ne(sql`coalesce(${leadOutcomesTable.raw_payload_json}->>'return_category', '')`, category),
+      ),
+    )
+    .returning({ id: leadOutcomesTable.id });
+  return rows.length;
 }

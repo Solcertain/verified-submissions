@@ -193,8 +193,16 @@ Each return reason is sorted into a category (stored as
 | `other` | anything unrecognised | review by hand |
 
 Only the first three are negative labels for calibration. The categories are
-keyword rules in `src/services/leadprosper_returns.ts`; read the `other` bucket
-periodically and add rules for reasons it misses.
+keyword rules in `src/services/leadprosper_returns.ts`, tuned on the 33 real
+returns from Aug 18 – Oct 17 2026 (each is a test case). Every sync re-applies
+the current rules to returns already stored, so improving a rule fixes old rows
+on the next run. Read the `other` bucket periodically and add rules for
+reasons it misses.
+
+First backfill (2026-10-17, 60 days, 33 returns): about two thirds were
+territory, ZIP, utility or property fit; 4 duplicates; 6 bore on verification
+(2 fake identities, 3 bad or wrong phone numbers, 1 opt-out). Only 1 of the 33
+was linked to a scored lead, because almost all predate the scorer.
 
 ### Do we need more data?
 

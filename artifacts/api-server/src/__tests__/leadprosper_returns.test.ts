@@ -23,6 +23,27 @@ describe("categorize_return_reason", () => {
     ["Not interested", "lead_quality"],
     ["", "other"],
     ["see notes", "other"],
+    // Real reasons from campaign 23668, Aug-Oct 2026, typos included.
+    ['Not a real person. "First Last"', "fraud"],
+    ["Fake name, non-working email, non-working phone number", "fraud"],
+    ["Not a working phone number. Have screenshot as proof. ", "contact_invalid"],
+    ["Number is associated with a gym. ", "contact_invalid"],
+    ["wrong number and emaill. they didnt sumbit anything ", "contact_invalid"],
+    ["Opted out of reciving commuincations solar", "consent_dispute"],
+    ["repeat", "duplicate"],
+    ["Duplicate lead, we just received this same lead two days before", "duplicate"],
+    ["NOT MY TERRITORY ", "lead_quality"],
+    ["Not in Zip territory", "lead_quality"],
+    ["Out of coverage area", "lead_quality"],
+    ["not in area", "lead_quality"],
+    ["this is not a zipcode on our list", "lead_quality"],
+    ["Way out of my afea (5hrs+ from me) and on top cant see the house from satellite so many trees", "lead_quality"],
+    ["This customer does not have Georgia Power as his utility. Please return.", "lead_quality"],
+    ["Cannot support solar provider due to utility company ", "lead_quality"],
+    ["Has solar ", "lead_quality"],
+    ["Mary Brennan does not own this home. It is owned by Newtown Athens LLC", "lead_quality"],
+    ["This is a manufactured home which results in an immediate Disqualification", "lead_quality"],
+    ["buyer is paused", "other"],
   ])("%s → %s", (reason, category) => {
     expect(categorize_return_reason(reason)).toBe(category);
   });

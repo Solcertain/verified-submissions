@@ -27,12 +27,15 @@ export const VERIFICATION_CATEGORIES: readonly ReturnCategory[] = [
 ];
 
 // First match wins, so the most serious readings are checked first.
+// Tuned on the 33 real returns pulled 2026-10-17 (Aug 18 - Oct 17, campaign
+// 23668). Buyers write freely, with typos: test new phrasings against
+// leadprosper_returns.test.ts before relying on them.
 const RULES: [ReturnCategory, RegExp][] = [
-  ["fraud", /\b(fraud|fake|bot|scam|spam|bogus|made[- ]?up|fictitious|test lead|gibberish|nonsense)\b/i],
-  ["consent_dispute", /\b(never (filled|submitted|requested|signed|asked|applied)|didn'?t (fill|request|submit|ask|apply)|did not (fill|request|submit|ask|apply)|no recollection|not requested|unsolicited|consent|dnc|do not call|stop calling|tcpa|litigat)/i],
-  ["contact_invalid", /\b(wrong (number|person|phone|email)|disconnected|invalid (phone|number|email)|bad (phone|number|email)|not in service|no such|unreachable|non[- ]?working|voicemail full|number (not|doesn'?t) (work|exist))/i],
-  ["duplicate", /\bdup(e|licate)?s?\b/i],
-  ["lead_quality", /\b(credit|renter|rent(s|ing)?|not (a )?home ?owner|not interested|out of (area|state|territory)|outside|shade|roof|budget|price|already (has|have)|condo|apartment|mobile home|manufactured|too (small|low)|bill|disqualif|unqualified)/i],
+  ["fraud", /\b(fraud|fake|bot|scam|spam|bogus|made[- ]?up|fictitious|test lead|gibberish|nonsense|not a real (person|lead|customer|name))\b/i],
+  ["consent_dispute", /\b(never (filled|submitted|requested|signed|asked|applied)|didn'?t (fill|request|submit|ask|apply)|did not (fill|request|submit|ask|apply)|no recollection|not requested|unsolicited|consent|dnc|do not call|stop calling|tcpa|litigat|opted? ?out|unsubscrib)/i],
+  ["contact_invalid", /\b(wrong (number|person|phone|email)|disconnected|invalid (phone|number|email)|bad (phone|number|email)|not in service|no such|unreachable|non[- ]?working|not a working|voicemail full|number (not|doesn'?t) (work|exist)|(number|phone) (is )?(associated|belongs) (with|to))/i],
+  ["duplicate", /\b(dup(e|licate)?s?|repeat(ed)?|same lead|received this (same )?lead)\b/i],
+  ["lead_quality", /\b(credit|renter|rent(s|ing)?|not (a |the )?home ?owner|(does ?n[o']t|doesnt) own|owned by|not interested|territor\w*|coverage|zip|not in (my |our |the )?area|out of (my|our|the) \w+|out of (area|state|range)|outside|hours? from|utility|power company|electric company|has solar|already (has|have)|shade|roof|budget|price|condo|apartment|mobile home|manufactured|too (small|low)|bill|disqualif|unqualified)/i],
 ];
 
 export function categorize_return_reason(reason: string | null | undefined): ReturnCategory {

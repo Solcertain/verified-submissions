@@ -1,5 +1,5 @@
 import { logger } from "../lib/logger.js";
-import { has_outcome, save_outcome } from "./outcome_store.js";
+import { has_outcome, refresh_return_category, save_outcome } from "./outcome_store.js";
 import { fetch_returned_leads, to_return_outcome, type Fetch } from "./leadprosper_returns.js";
 
 export interface SyncResult {
@@ -9,6 +9,7 @@ export interface SyncResult {
   returned_found: number;
   recorded: number;
   already_recorded: number;
+  recategorized: number;
   failed: number;
   by_category: Record<string, number>;
 }
@@ -39,6 +40,7 @@ export async function sync_returns(opts: {
     returned_found: leads.length,
     recorded: 0,
     already_recorded: 0,
+    recategorized: 0,
     failed: 0,
     by_category: {},
   };
@@ -54,6 +56,11 @@ export async function sync_returns(opts: {
     try {
       if (await has_outcome(outcome.lp_lead_id, "returned")) {
         result.already_recorded++;
+        result.recategorized += await refresh_return_category(
+          outcome.lp_lead_id,
+          category,
+          outcome.raw["bears_on_verification"] === true,
+        );
         continue;
       }
       const stored = await save_outcome(outcome);
