@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { timingSafeEqual } from "node:crypto";
 import { logger } from "../lib/logger.js";
 import { sync_returns, type SyncResult } from "../services/returns_sync.js";
+import { retry_unreported_usage } from "../services/usage.js";
 
 const router = Router();
 
@@ -60,6 +61,28 @@ router.get("/cron/sync-returns", async (req: Request, res: Response) => {
   }
 
   res.status(200).json({ ok: true, results });
+});
+
+// GET /api/cron/report-usage
+//
+// Resends usage rows the Stripe meter has not acknowledged (the request path
+// sends each one once, without waiting). Stripe deduplicates by row id, so a
+// resend never double-bills.
+router.get("/cron/report-usage", async (req: Request, res: Response) => {
+  if (!authorized(req)) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+  if (!process.env["STRIPE_SECRET_KEY"]) {
+    res.status(200).json({ ok: true, skipped: "STRIPE_SECRET_KEY is not configured" });
+    return;
+  }
+  try {
+    res.status(200).json({ ok: true, ...(await retry_unreported_usage()) });
+  } catch (err) {
+    logger.error({ err }, "Usage retry failed");
+    res.status(500).json({ ok: false, error: "Usage retry failed" });
+  }
 });
 
 export default router;

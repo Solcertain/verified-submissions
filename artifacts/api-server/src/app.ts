@@ -3,6 +3,7 @@ import express, { type Express, type Request, type Response } from "express";
 import cors from "cors";
 import { pinoHttp } from "pino-http";
 import router from "./routes/index.js";
+import { stripe_webhook } from "./routes/billing.js";
 import { logger } from "./lib/logger.js";
 
 type PinoRequest = IncomingMessage & { id?: unknown };
@@ -29,6 +30,8 @@ app.use(
   }),
 );
 app.use(cors());
+// Before express.json(): Stripe's signature covers the raw bytes it sent.
+app.post("/api/stripe/webhook", express.raw({ type: "*/*", limit: "1mb" }), stripe_webhook);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
