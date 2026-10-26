@@ -28,10 +28,14 @@ function host(url: unknown): string | null {
   }
 }
 
+// customer_id limits the report to one customer's leads; omitted (Solcertain's
+// own internal view) it covers everyone.
 export async function load_report_rows(
   start: Date,
   end: Date,
+  customer_id?: string,
 ): Promise<{ subs: ReportSubmission[]; outcomes: ReportOutcome[] }> {
+  const only_customer = customer_id ? sql` and customer_id = ${customer_id}::uuid` : sql``;
   const s = await getDb().execute(sql`
     select id, received_at,
            score_json->>'value' as score, status,
@@ -45,7 +49,7 @@ export async function load_report_rows(
            parsed_submission_json->'features'->>'is_mobile' as is_mobile,
            case when score_json->>'model_version' is null then parsed_submission_json end as stored_for_rescore
     from lead_submissions
-    where received_at >= ${start.toISOString()} and received_at < ${end.toISOString()}`);
+    where received_at >= ${start.toISOString()} and received_at < ${end.toISOString()}${only_customer}`);
 
   const subs: ReportSubmission[] = (s.rows as Record<string, unknown>[]).map((r) => {
     const legacy_version = r["model_version"] === "legacy-event-log";
@@ -100,7 +104,7 @@ export async function load_report_rows(
            raw_payload_json->'engine_flags' as engine_flags,
            raw_payload_json->>'scored_at' as scored_at
     from lead_outcomes
-    where analysis_id in (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})`);
+    where analysis_id in (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})${only_customer}`);
 
   const outcomes: ReportOutcome[] = (o.rows as Record<string, unknown>[]).map((r) => ({
     analysis_id: (r["analysis_id"] as string) ?? null,

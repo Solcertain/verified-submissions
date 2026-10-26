@@ -14,6 +14,9 @@ vi.mock("../services/google_sheets.js", () => ({
 vi.mock("../services/webhook_dispatcher.js", () => ({
   dispatch_outbound_webhook: vi.fn(async () => ({ success: true })),
 }));
+vi.mock("../services/usage.js", () => ({
+  record_usage: vi.fn(async () => ({ billable: false })),
+}));
 vi.mock("../services/trustedform_client.js", async (importActual) => {
   const actual = await importActual<typeof import("../services/trustedform_client.js")>();
   return { ...actual, claim_certificate: vi.fn() };
@@ -67,15 +70,24 @@ const FLAT_KEYS = [
   "vs_model_version",
 ];
 
+// These tests exercise the pipeline as Solcertain; auth has its own tests in
+// customer_accounts.test.ts.
+const INTERNAL_KEY = "internal-test-key";
+
 function makeApp(): Express {
   const app = express();
   app.use(express.json());
+  app.use((req, _res, next) => {
+    req.headers["x-api-key"] ??= INTERNAL_KEY;
+    next();
+  });
   app.use("/api", router);
   return app;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env["INTERNAL_API_KEY"] = INTERNAL_KEY;
   (get_submission_by_certificate as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 });
 

@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
-import { require_api_key } from "../middlewares/api_key.js";
+import { internal_only, require_api_key } from "../middlewares/api_key.js";
 import { claim_certificate, is_valid_trustedform_url } from "../services/trustedform_client.js";
+import { get_activeprospect_key } from "../services/customer_store.js";
 import {
   parse_trustedform_text,
   parse_trustedform_payload,
@@ -17,7 +18,7 @@ const router = Router();
 // Accepts a TrustedForm certificate URL, claims the cert, parses it,
 // infers field roles, normalizes the submission, scores the lead,
 // and returns a full structured response.
-router.post("/score-lead", require_api_key, async (req: Request, res: Response) => {
+router.post("/score-lead", require_api_key, internal_only, async (req: Request, res: Response) => {
   const { certificate_url } = req.body as { certificate_url?: string };
 
   // 1. Validate input
@@ -39,7 +40,7 @@ router.post("/score-lead", require_api_key, async (req: Request, res: Response) 
   }
 
   // 2. Claim certificate from TrustedForm
-  const claim_result = await claim_certificate(certificate_url);
+  const claim_result = await claim_certificate(certificate_url, await get_activeprospect_key(req.customer!));
 
   // Even if the claim failed we still attempt to parse what we have
   let parsed_lead;
@@ -119,7 +120,7 @@ router.post("/score-lead", require_api_key, async (req: Request, res: Response) 
 // POST /api/score-lead/from-text
 // Accepts a raw TrustedForm event log as plain text (for testing/dev use
 // without a live certificate claim). Parses, infers, normalizes, and scores.
-router.post("/score-lead/from-text", require_api_key, (req: Request, res: Response) => {
+router.post("/score-lead/from-text", require_api_key, internal_only, (req: Request, res: Response) => {
   const { event_log_text, certificate_url } = req.body as {
     event_log_text?: string;
     certificate_url?: string;

@@ -1,6 +1,7 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { pgTable, text, uuid, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
-import { eq, or } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
+import { SOLCERTAIN_CUSTOMER_ID } from "@workspace/db/schema";
 import pg from "pg";
 import { logger } from "../lib/logger.js";
 
@@ -19,9 +20,11 @@ export const leadSubmissionsTable = pgTable(
     score_json: jsonb("score_json"),
     status: text("status"),
     processed_at: timestamp("processed_at", { withTimezone: true }),
+    customer_id: uuid("customer_id").default(SOLCERTAIN_CUSTOMER_ID),
   },
   (table) => [
-    uniqueIndex("lead_submissions_certificate_url_idx").on(table.certificate_url),
+    // The certificate cache is per customer (migration 0003).
+    uniqueIndex("lead_submissions_customer_certificate_idx").on(table.customer_id, table.certificate_url),
   ],
 );
 
@@ -48,6 +51,9 @@ function getDb(): NodePgDatabase<typeof schema> {
 }
 
 export type SaveSubmissionInput = {
+  // Whose lead this is. Defaults to Solcertain, which owns every row written
+  // before customer accounts.
+  customer_id?: string;
   certificate_url?: string;
   certificate_id?: string;
   raw_payload_json?: Record<string, unknown>;
@@ -59,7 +65,7 @@ export type SaveSubmissionInput = {
 };
 
 // Upsert a lead submission row.
-// If a row with the same certificate_url already exists, update it in-place.
+// If this customer already has a row for the certificate_url, update it in-place.
 // If no certificate_url is provided (e.g. from-text route), always insert a new row.
 // Storage errors are caught and logged so callers never see an exception.
 export async function save_submission(
@@ -68,6 +74,7 @@ export async function save_submission(
   try {
     const client = getDb();
     const row: InsertLeadSubmission = {
+      customer_id: input.customer_id ?? SOLCERTAIN_CUSTOMER_ID,
       certificate_url: input.certificate_url ?? null,
       certificate_id: input.certificate_id ?? null,
       raw_payload_json: input.raw_payload_json ?? null,
@@ -79,12 +86,12 @@ export async function save_submission(
     };
 
     if (input.certificate_url) {
-      // Upsert — dedup on certificate_url
+      // Upsert — dedup on (customer_id, certificate_url)
       const [saved] = await client
         .insert(leadSubmissionsTable)
         .values(row)
         .onConflictDoUpdate({
-          target: leadSubmissionsTable.certificate_url,
+          target: [leadSubmissionsTable.customer_id, leadSubmissionsTable.certificate_url],
           set: {
             certificate_id: row.certificate_id,
             raw_payload_json: row.raw_payload_json,
@@ -111,9 +118,11 @@ export async function save_submission(
   }
 }
 
-// Look up a previously processed submission by certificate URL or certificate ID.
-// Returns null if not found or if the DB call fails.
+// Look up a previously processed submission by certificate URL or certificate ID,
+// among this customer's rows only: one customer's analysis is never served to
+// another. Returns null if not found or if the DB call fails.
 export async function get_submission_by_certificate(
+  customer_id: string,
   certificate_url?: string,
   certificate_id?: string,
 ): Promise<LeadSubmission | null> {
@@ -132,7 +141,12 @@ export async function get_submission_by_certificate(
     const [row] = await client
       .select()
       .from(leadSubmissionsTable)
-      .where(conditions.length === 1 ? conditions[0]! : or(...conditions))
+      .where(
+        and(
+          eq(leadSubmissionsTable.customer_id, customer_id),
+          conditions.length === 1 ? conditions[0]! : or(...conditions),
+        ),
+      )
       .limit(1);
 
     return row ?? null;

@@ -156,21 +156,32 @@ export function certificate_id_from_url(url: string): string {
   return match ? match[1] : "";
 }
 
-export function mapToLeadProsperFlatFields(
-  outcome: ScoreAndRouteOutcome,
-): LeadProsperFlatResponse {
+// The current-model verdict for a pipeline outcome, shared by the Lead Prosper
+// flat response and the generic /v1/verify response so both decide alike.
+export type OutcomeVerdict =
+  | {
+      kind: "verdict";
+      result: AuthenticityResult;
+      certificate_id: string;
+      session_seconds: number | null;
+      analysis_id: string | null;
+    }
+  | { kind: "unavailable"; reason: string };
+
+export function verdict_for_outcome(outcome: ScoreAndRouteOutcome): OutcomeVerdict {
   switch (outcome.kind) {
     case "scored":
-      return build_flat(
-        score_authenticity(outcome.features, {
+      return {
+        kind: "verdict",
+        result: score_authenticity(outcome.features, {
           required_consent_terms: outcome.required_consent_terms,
           landing_page_url: outcome.landing_page_url,
           lead: outcome.lead,
         }),
-        outcome.parsed_lead.certificate_id || certificate_id_from_url(outcome.certificate_url),
-        outcome.features.seconds_on_page,
-        outcome.analysis_id,
-      );
+        certificate_id: outcome.parsed_lead.certificate_id || certificate_id_from_url(outcome.certificate_url),
+        session_seconds: outcome.features.seconds_on_page,
+        analysis_id: outcome.analysis_id,
+      };
 
     // Cached rows were written under an earlier model whose scores are not
     // comparable to this one, so replaying them would silently mix model
@@ -182,28 +193,36 @@ export function mapToLeadProsperFlatFields(
     case "cached": {
       const stored = read_stored_features(outcome.parsed_lead);
       if (!stored) {
-        return inconclusive_response(
-          `Stored analysis predates model ${MODEL_VERSION} and carries no features; re-claim with force=true to rescore.`,
-        );
+        return {
+          kind: "unavailable",
+          reason: `Stored analysis predates model ${MODEL_VERSION} and carries no features; re-claim with force=true to rescore.`,
+        };
       }
-      return build_flat(
-        score_authenticity(stored, {
+      return {
+        kind: "verdict",
+        result: score_authenticity(stored, {
           required_consent_terms: outcome.required_consent_terms,
           certificate_reused: outcome.certificate_reused,
           landing_page_url: outcome.landing_page_url,
           lead: outcome.lead,
         }),
-        stored_certificate_id(outcome.parsed_lead) ||
-          certificate_id_from_url(outcome.certificate_url),
-        stored.seconds_on_page,
-        outcome.analysis_id,
-      );
+        certificate_id:
+          stored_certificate_id(outcome.parsed_lead) || certificate_id_from_url(outcome.certificate_url),
+        session_seconds: stored.seconds_on_page,
+        analysis_id: outcome.analysis_id,
+      };
     }
 
     case "claim_failed":
-      return inconclusive_response(outcome.error);
-
     case "invalid_url":
-      return inconclusive_response(outcome.error);
+      return { kind: "unavailable", reason: outcome.error };
   }
+}
+
+export function mapToLeadProsperFlatFields(
+  outcome: ScoreAndRouteOutcome,
+): LeadProsperFlatResponse {
+  const v = verdict_for_outcome(outcome);
+  if (v.kind === "unavailable") return inconclusive_response(v.reason);
+  return build_flat(v.result, v.certificate_id, v.session_seconds, v.analysis_id);
 }

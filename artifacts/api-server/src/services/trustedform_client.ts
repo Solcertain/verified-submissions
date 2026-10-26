@@ -91,16 +91,6 @@ export interface ClaimResult {
   error: string | null;
 }
 
-export function get_api_key(): string {
-  const key = process.env["ACTIVEPROSPECT_API_KEY"];
-  if (!key) {
-    throw new Error(
-      "ACTIVEPROSPECT_API_KEY environment variable is not set. Cannot authenticate with TrustedForm.",
-    );
-  }
-  return key;
-}
-
 export function is_valid_trustedform_url(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -139,8 +129,12 @@ export interface ClaimOptions {
   scan_terms?: string[];
 }
 
+// api_key is the ActiveProspect key of the customer the lead belongs to, passed
+// on every call: each customer's claims are made, and billed, on their own
+// ActiveProspect account. Solcertain's callers pass ACTIVEPROSPECT_API_KEY.
 export async function claim_certificate(
   certificate_url: string,
+  api_key: string | null | undefined,
   options: ClaimOptions = {},
 ): Promise<ClaimResult> {
   // Reject any URL that is not a TrustedForm cert URL to prevent credential leakage
@@ -153,15 +147,12 @@ export async function claim_certificate(
     };
   }
 
-  let api_key: string;
-  try {
-    api_key = get_api_key();
-  } catch (err) {
+  if (!api_key) {
     return {
       ok: false,
       status_code: null,
       data: {},
-      error: err instanceof Error ? err.message : "Missing API key",
+      error: "No ActiveProspect API key is configured for this account. Cannot authenticate with TrustedForm.",
     };
   }
 
@@ -211,7 +202,7 @@ export async function claim_certificate(
     if (!response.ok) {
       const errMsg =
         response.status === 401
-          ? "Unauthorized — check ACTIVEPROSPECT_API_KEY"
+          ? "Unauthorized — check the ActiveProspect API key"
           : response.status === 404
             ? "Certificate not found"
             : `HTTP ${response.status}: ${JSON.stringify(data).slice(0, 300)}`;

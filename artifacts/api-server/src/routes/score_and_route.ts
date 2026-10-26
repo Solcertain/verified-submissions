@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { require_api_key } from "../middlewares/api_key.js";
+import { internal_only, require_api_key } from "../middlewares/api_key.js";
 import {
   parse_trustedform_text,
 } from "../services/event_parser.js";
@@ -18,6 +18,7 @@ import { append_review_row } from "../services/google_sheets.js";
 import { dispatch_outbound_webhook } from "../services/webhook_dispatcher.js";
 import { save_submission } from "../services/submission_store.js";
 import { scoreAndRouteLead } from "../services/score_and_route_service.js";
+import { get_activeprospect_key } from "../services/customer_store.js";
 
 const router = Router();
 
@@ -58,7 +59,10 @@ router.post("/score-and-route", require_api_key, async (req: Request, res: Respo
     return;
   }
 
+  const customer = req.customer!;
   const outcome = await scoreAndRouteLead({
+    customer,
+    activeprospect_key: await get_activeprospect_key(customer),
     raw_url,
     raw_payload: req.body as Record<string, unknown>,
     force,
@@ -138,7 +142,7 @@ router.post("/score-and-route", require_api_key, async (req: Request, res: Respo
 
 // POST /api/score-and-route/from-text
 // Same full pipeline but scoring from a raw event log (no live cert claim)
-router.post("/score-and-route/from-text", require_api_key, async (req: Request, res: Response) => {
+router.post("/score-and-route/from-text", require_api_key, internal_only, async (req: Request, res: Response) => {
   const { event_log_text, certificate_url } = req.body as {
     event_log_text?: string;
     certificate_url?: string;

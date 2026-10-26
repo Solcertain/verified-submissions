@@ -6,6 +6,7 @@ import { logger } from "../lib/logger.js";
 import { leadSubmissionsTable } from "./submission_store.js";
 import { normalize_certificate_url } from "./trustedform_client.js";
 import { scrub_pii } from "./pii.js";
+import { SOLCERTAIN_CUSTOMER_ID } from "@workspace/db/schema";
 
 const { Pool } = pg;
 
@@ -33,6 +34,7 @@ export const leadOutcomesTable = pgTable(
     supplier: text("supplier"),
     raw_payload_json: jsonb("raw_payload_json"),
     analysis_id: uuid("analysis_id"),
+    customer_id: uuid("customer_id").default(SOLCERTAIN_CUSTOMER_ID),
   },
   (table) => [
     index("lead_outcomes_lp_lead_id_idx").on(table.lp_lead_id),
@@ -117,7 +119,12 @@ export interface StoredOutcome {
   analysis_id: string | null;
 }
 
-export async function save_outcome(payload: OutcomePayload): Promise<StoredOutcome | null> {
+// customer_id is whoever the callback token belongs to. The outcome is linked
+// only to that customer's own analysis of the certificate.
+export async function save_outcome(
+  payload: OutcomePayload,
+  customer_id: string = SOLCERTAIN_CUSTOMER_ID,
+): Promise<StoredOutcome | null> {
   // Normalizing the URL matters: Lead Prosper stores the certificate URL as the
   // publisher sent it, which may carry the browser path we strip at claim time.
   const normalized_url = payload.certificate_url
@@ -130,7 +137,12 @@ export async function save_outcome(payload: OutcomePayload): Promise<StoredOutco
       const rows = await getDb()
         .select({ id: leadSubmissionsTable.id })
         .from(leadSubmissionsTable)
-        .where(eq(leadSubmissionsTable.certificate_url, normalized_url))
+        .where(
+          and(
+            eq(leadSubmissionsTable.certificate_url, normalized_url),
+            eq(leadSubmissionsTable.customer_id, customer_id),
+          ),
+        )
         .orderBy(desc(leadSubmissionsTable.received_at))
         .limit(1);
       analysis_id = rows[0]?.id ?? null;
@@ -153,6 +165,7 @@ export async function save_outcome(payload: OutcomePayload): Promise<StoredOutco
         supplier: payload.supplier,
         raw_payload_json: payload.raw,
         analysis_id,
+        customer_id,
       })
       .returning({ id: leadOutcomesTable.id });
 

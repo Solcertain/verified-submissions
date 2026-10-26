@@ -3,6 +3,7 @@ import { require_api_key } from "../middlewares/api_key.js";
 import { normalizeLeadProsperPayload } from "../services/leadprosper_adapter.js";
 import { scoreAndRouteLead } from "../services/score_and_route_service.js";
 import { mapToLeadProsperFlatFields } from "../services/leadprosper_flat_fields.js";
+import { get_activeprospect_key } from "../services/customer_store.js";
 
 const router = Router();
 
@@ -26,7 +27,12 @@ router.post(
       return;
     }
 
+    // Solcertain's INTERNAL_API_KEY or a customer's own key; either way the
+    // claim runs on that caller's ActiveProspect account.
+    const customer = req.customer!;
     const outcome = await scoreAndRouteLead({
+      customer,
+      activeprospect_key: await get_activeprospect_key(customer),
       raw_url: certificate_url,
       raw_payload,
       source: "leadprosper",

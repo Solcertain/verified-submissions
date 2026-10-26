@@ -26,6 +26,9 @@ import {
   save_submission,
   get_submission_by_certificate,
 } from "./submission_store.js";
+import type { CustomerContext } from "./customer_store.js";
+import { record_usage } from "./usage.js";
+import { certificate_id_from_url } from "./leadprosper_flat_fields.js";
 
 // Flat snapshot of a normalized submission, used both in API responses and
 // when persisting to the lead_submissions table.
@@ -87,9 +90,16 @@ export type ScoreAndRouteOutcome =
       sheet_result: SheetResult;
       webhook_result: WebhookResult;
       analysis_id: string | null;
+      // A new certificate for this customer, counted toward their bill.
+      billable: boolean;
     };
 
 export interface ScoreAndRouteInput {
+  // Whose lead this is: scopes the cache, the stored row and the usage count.
+  customer: CustomerContext;
+  // The customer's own ActiveProspect key (Solcertain: ACTIVEPROSPECT_API_KEY).
+  // Only needed on a cache miss.
+  activeprospect_key: string | null;
   // The raw certificate URL (may be a full browser URL — it is normalized here).
   raw_url: string;
   // The original request body, persisted as-is for audit/evidence.
@@ -97,7 +107,7 @@ export interface ScoreAndRouteInput {
   // Skip the dedup cache lookup when true.
   force?: boolean;
   // Where the request came from (informational; reserved for future logging).
-  source?: "generic" | "leadprosper";
+  source?: "generic" | "leadprosper" | "v1";
 }
 
 // Build routing config from env vars so it's easy to configure without code changes.
@@ -124,7 +134,7 @@ function friendly_claim_error(status_code: number | null, error: string | null):
     return "Certificate not found. It may have expired, already been claimed, or the URL is invalid.";
   }
   if (status_code === 401) {
-    return "TrustedForm API authentication failed. Check the ACTIVEPROSPECT_API_KEY secret.";
+    return "TrustedForm API authentication failed. Check the ActiveProspect API key on this account.";
   }
   return `TrustedForm returned an error (HTTP ${status_code ?? "unknown"}): ${error ?? "no detail"}`;
 }
@@ -163,7 +173,7 @@ export async function scoreAndRouteLead(
 
   // Dedup cache — return a previously stored result unless forced.
   if (!input.force) {
-    const existing = await get_submission_by_certificate(certificate_url, undefined);
+    const existing = await get_submission_by_certificate(input.customer.id, certificate_url, undefined);
     if (existing) {
       return {
         kind: "cached",
@@ -194,7 +204,7 @@ export async function scoreAndRouteLead(
       ? (input.raw_payload["advertiser_name"] as string)
       : undefined;
 
-  const claim_result = await claim_certificate(certificate_url, {
+  const claim_result = await claim_certificate(certificate_url, input.activeprospect_key, {
     advertiser_name,
     scan_terms: consent_terms,
   });
@@ -237,8 +247,11 @@ export async function scoreAndRouteLead(
   });
   const score = to_score_result(authenticity, legacy_score.metrics);
 
-  // Route.
-  const routing_config = get_routing_config();
+  // Route. The Sheets review queue and the outbound webhook are Solcertain's
+  // own operations; a customer's leads (and their personal data) never go there.
+  const routing_config = input.customer.internal
+    ? get_routing_config()
+    : { google_sheets_enabled: false, outbound_webhook_enabled: false };
   const routing = route_lead(normalized, score, routing_config);
 
   // Google Sheets — only for review leads.
@@ -268,7 +281,9 @@ export async function scoreAndRouteLead(
   }
 
   // Outbound webhook.
-  const webhook_config = get_outbound_webhook_config();
+  const webhook_config = input.customer.internal
+    ? get_outbound_webhook_config()
+    : { ...get_outbound_webhook_config(), enabled: false };
   let webhook_result: WebhookResult = null;
   if (webhook_config.enabled) {
     const payload = build_webhook_payload(normalized, score, routing, certificate_url);
@@ -296,6 +311,7 @@ export async function scoreAndRouteLead(
   // Persist. save_submission is itself non-blocking (it swallows DB errors and
   // returns null), so a storage outage never fails the synchronous response.
   const saved = await save_submission({
+    customer_id: input.customer.id,
     certificate_url,
     certificate_id: normalized.certificate_id || undefined,
     // Names are read for scoring and not kept; see lead_fields.storable_payload.
@@ -320,6 +336,13 @@ export async function scoreAndRouteLead(
     processed_at: new Date(),
   });
 
+  // The cert id comes from the URL: the v4 claim response carries none.
+  const usage = await record_usage(
+    input.customer,
+    certificate_id_from_url(certificate_url) || normalized.certificate_id,
+    saved?.id ?? null,
+  );
+
   return {
     kind: "scored",
     certificate_url,
@@ -335,5 +358,6 @@ export async function scoreAndRouteLead(
     sheet_result,
     webhook_result,
     analysis_id: saved?.id ?? null,
+    billable: usage.billable,
   };
 }

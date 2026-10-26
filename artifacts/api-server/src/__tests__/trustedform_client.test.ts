@@ -6,11 +6,9 @@ import { claim_certificate } from "../services/trustedform_client.js";
 describe("claim_certificate request", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    delete process.env["ACTIVEPROSPECT_API_KEY"];
   });
 
   it("requests only the nine Insights properties the detectors use", async () => {
-    process.env["ACTIVEPROSPECT_API_KEY"] = "test-key";
     let sent: Record<string, any> = {};
     vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
       sent = JSON.parse(init.body);
@@ -23,7 +21,7 @@ describe("claim_certificate request", () => {
       };
     });
 
-    await claim_certificate(`https://cert.trustedform.com/${"a".repeat(40)}`);
+    await claim_certificate(`https://cert.trustedform.com/${"a".repeat(40)}`, "test-key");
 
     expect([...sent.insights.properties].sort()).toEqual(
       [
@@ -40,5 +38,22 @@ describe("claim_certificate request", () => {
     );
     expect(sent.verify).toBeDefined();
     expect(sent.insights.scans.required.length).toBeGreaterThan(0);
+  });
+
+  it("authenticates with the key passed for this call, and refuses without one", async () => {
+    let auth = "";
+    vi.stubGlobal("fetch", async (_url: string, init: { headers: Record<string, string> }) => {
+      auth = init.headers["Authorization"] ?? "";
+      return { ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({}), text: async () => "" };
+    });
+    const url = `https://cert.trustedform.com/${"b".repeat(40)}`;
+
+    await claim_certificate(url, "customer-a-key");
+    expect(auth).toBe(`Basic ${Buffer.from("API:customer-a-key").toString("base64")}`);
+
+    auth = "";
+    const none = await claim_certificate(url, null);
+    expect(none.ok).toBe(false);
+    expect(auth).toBe("");
   });
 });
