@@ -1,7 +1,7 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { pgTable, text, uuid, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { and, eq, or } from "drizzle-orm";
-import { SOLCERTAIN_CUSTOMER_ID } from "@workspace/db/schema";
+import { SOLCERTAIN_CUSTOMER_ID } from "./customer_tables.js";
 import pg from "pg";
 import { logger } from "../lib/logger.js";
 

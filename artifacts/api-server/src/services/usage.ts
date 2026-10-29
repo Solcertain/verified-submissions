@@ -1,7 +1,7 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { and, asc, eq, gt, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import pg from "pg";
-import { customersTable, usageEventsTable } from "@workspace/db/schema";
+import { customersTable, usageEventsTable } from "./customer_tables.js";
 import { logger } from "../lib/logger.js";
 import { stripe_request } from "./stripe_client.js";
 import type { CustomerContext } from "./customer_store.js";

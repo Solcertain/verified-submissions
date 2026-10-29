@@ -9,7 +9,7 @@ import {
   customersTable,
   outcomeTokensTable,
   type Customer,
-} from "@workspace/db/schema";
+} from "./customer_tables.js";
 import { logger } from "../lib/logger.js";
 import { decrypt_secret, encrypt_secret, random_token, safe_equal, sha256_hex } from "../lib/crypto.js";
 

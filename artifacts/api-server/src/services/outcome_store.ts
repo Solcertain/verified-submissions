@@ -6,7 +6,7 @@ import { logger } from "../lib/logger.js";
 import { leadSubmissionsTable } from "./submission_store.js";
 import { normalize_certificate_url } from "./trustedform_client.js";
 import { scrub_pii } from "./pii.js";
-import { SOLCERTAIN_CUSTOMER_ID } from "@workspace/db/schema";
+import { SOLCERTAIN_CUSTOMER_ID } from "./customer_tables.js";
 
 const { Pool } = pg;
 
