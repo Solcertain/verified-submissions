@@ -71,3 +71,25 @@ Auth fails closed: with `INTERNAL_API_KEY` unset only customer keys work
 3. `DATABASE_URL=… node lib/db/migrate.mjs` to apply 0004, which drops the
    global one-row-per-certificate index so two customers can each score the
    same certificate.
+
+Status 2026-10-29: 0003 applied and this code live in production (07b5b20).
+The first deploy crashed at startup because the api package imported
+`@workspace/db/schema`, which Vercel does not ship; the customer tables are now
+declared in `src/services/customer_tables.ts`. Keep them in step with
+`lib/db/src/schema/index.ts`. 0004 waits for the first live lead on the new code.
+
+## Beta onboarding (by hand, no Stripe)
+
+From `artifacts/api-server`, with `INTERNAL_API_KEY` in `.env.local`:
+
+```
+node scripts/onboard-beta.mjs --name "Acme Leads" --email ops@acme.com --role buyer
+```
+
+This creates an active founder-tier customer with no Stripe subscription (usage
+counted, never billed), then prints an API key and an outcome URL once. Set
+`CUSTOMER_ACTIVEPROSPECT_KEY` in the environment to store the tester's
+ActiveProspect key in the same run; that needs `SECRETS_ENCRYPTION_KEY` in
+Vercel. Until a key is stored, verify answers `review` with "No ActiveProspect
+API key is configured for this account". To move a tester to paid later, send
+them an invite (`POST /api/admin/invites`) and Checkout.
