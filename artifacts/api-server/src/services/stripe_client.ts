@@ -23,6 +23,14 @@ export class StripeError extends Error {
 
 type Params = Record<string, unknown>;
 
+// Only what this module uses of a fetch response, declared here rather than
+// relying on the global Response type, which the Vercel build does not provide.
+interface FetchResponse {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}
+
 // Stripe takes form encoding with bracketed keys: a[b]=1, items[0][price]=x.
 export function encode_form(params: Params, prefix = ""): string[] {
   const out: string[] = [];
@@ -61,12 +69,12 @@ export async function stripe_request<T = Record<string, unknown>>(
   if (method === "POST") headers["Content-Type"] = "application/x-www-form-urlencoded";
   if (options.idempotency_key) headers["Idempotency-Key"] = options.idempotency_key;
 
-  const res = await fetch(url, {
+  const res = (await fetch(url, {
     method,
     headers,
     body: method === "POST" ? body : undefined,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
+  })) as unknown as FetchResponse;
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
     const err = (json["error"] ?? {}) as Record<string, unknown>;

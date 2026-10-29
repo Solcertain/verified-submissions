@@ -6,6 +6,14 @@ import { logger } from "../lib/logger.js";
 
 const RESEND_API = "https://api.resend.com/emails";
 
+// Only what this module uses of a fetch response, declared here rather than
+// relying on the global Response type, which the Vercel build does not provide.
+interface FetchResponse {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}
+
 export interface EmailMessage {
   to: string | string[];
   subject: string;
@@ -27,7 +35,7 @@ export async function send_email(message: EmailMessage): Promise<SendResult> {
     return { sent: false, id: null, error: "not_configured" };
   }
   try {
-    const res = await fetch(RESEND_API, {
+    const res = (await fetch(RESEND_API, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -38,7 +46,7 @@ export async function send_email(message: EmailMessage): Promise<SendResult> {
         text: message.text,
       }),
       signal: AbortSignal.timeout(10_000),
-    });
+    })) as unknown as FetchResponse;
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
       const error = typeof json["message"] === "string" ? json["message"] : `Resend HTTP ${res.status}`;
