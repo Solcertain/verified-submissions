@@ -19,6 +19,7 @@ Lead Prosper flow (campaign 23668) is unchanged.
 | `POST /api/stripe/webhook` | Stripe signature | Mounted with `express.raw()` before `express.json()` in `app.ts`. |
 | `GET /api/cron/report-usage` | `CRON_SECRET` / internal key | Daily resend of usage Stripe has not acknowledged. |
 | `POST /api/admin/invites` | internal key | Signed invite token + join URL (no email; the waitlist admin wiring is step 6). |
+| `POST /api/admin/customers` | internal key | `{ name, email, role?, tier? }` → an active customer with no Stripe subscription (beta testers, enterprise). Tier defaults to `founder`. Usage is counted, never billed. `GET` lists customers. |
 | `POST /api/admin/customers/:id/api-keys` | internal key | New `vsk_…` key, shown once. `DELETE …/api-keys/:key_id` revokes. |
 | `PUT /api/admin/customers/:id/activeprospect-key` | internal key | Stores the customer's ActiveProspect key, AES-256-GCM encrypted. |
 | `POST /api/admin/customers/:id/outcome-tokens` | internal key | New outcome URL token, shown once. |

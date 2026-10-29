@@ -252,6 +252,55 @@ export async function create_paid_customer(
   });
 }
 
+export interface ManualCustomer {
+  name: string;
+  email: string;
+  role: string;
+  tier: Exclude<Tier, "internal">;
+}
+
+export class DuplicateCustomerError extends Error {}
+
+// A customer set up by hand (beta testers, enterprise deals): active at once,
+// no Stripe subscription. With no stripe_customer_id their usage is counted but
+// never sent to a meter, so nothing is charged until they move to checkout.
+export async function create_manual_customer(input: ManualCustomer): Promise<string> {
+  if (await customer_exists_for_email(input.email)) {
+    throw new DuplicateCustomerError(`A customer already exists for ${input.email}`);
+  }
+  return getDb().transaction(async (tx) => {
+    const [customer] = await tx
+      .insert(customersTable)
+      .values({
+        name: input.name,
+        role: input.role,
+        tier: input.tier,
+        status: "active",
+        monthly_minimum_cents: 0,
+        waitlist_email: input.email,
+      })
+      .returning({ id: customersTable.id });
+    await tx.insert(customerUsersTable).values({ customer_id: customer!.id, email: input.email });
+    return customer!.id;
+  });
+}
+
+export async function list_customers(): Promise<
+  Array<Pick<Customer, "id" | "name" | "role" | "tier" | "status" | "waitlist_email" | "created_at"> & { billed: boolean }>
+> {
+  const rows = await getDb().select().from(customersTable).orderBy(customersTable.created_at);
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    role: r.role,
+    tier: r.tier,
+    status: r.status,
+    waitlist_email: r.waitlist_email,
+    created_at: r.created_at,
+    billed: r.stripe_customer_id !== null,
+  }));
+}
+
 export async function find_customer_by_stripe(
   ids: { subscription?: string | null; customer?: string | null },
 ): Promise<(CustomerContext & { monthly_minimum_cents: number }) | null> {

@@ -2,9 +2,12 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { logger } from "../lib/logger.js";
 import { internal_key_matches } from "../middlewares/api_key.js";
 import {
+  DuplicateCustomerError,
   create_api_key,
+  create_manual_customer,
   create_outcome_token,
   get_customer,
+  list_customers,
   revoke_api_key,
   set_activeprospect_key,
 } from "../services/customer_store.js";
@@ -58,6 +61,46 @@ router.post("/admin/invites", internal, (req: Request, res: Response) => {
   } catch (err) {
     const status = err instanceof BillingError ? err.status : 500;
     res.status(status).json({ ok: false, error: err instanceof Error ? err.message : "Invite failed" });
+  }
+});
+
+// GET /api/admin/customers
+router.get("/admin/customers", internal, async (_req: Request, res: Response) => {
+  res.status(200).json({ ok: true, customers: await list_customers() });
+});
+
+// POST /api/admin/customers  { name, email, role?, tier? }
+// Sets up a customer by hand, active with no Stripe subscription: beta testers
+// and enterprise deals. Their usage is counted but not billed.
+router.post("/admin/customers", internal, async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const name = str(body["name"]);
+  const email = str(body["email"]);
+  if (!name || !email || !email.includes("@")) {
+    res.status(400).json({ ok: false, error: "name and email are required" });
+    return;
+  }
+  const role = str(body["role"]);
+  const tier = str(body["tier"]) ?? "founder";
+  if (!["starter", "growth", "founder", "enterprise"].includes(tier)) {
+    res.status(400).json({ ok: false, error: "tier must be starter, growth, founder or enterprise" });
+    return;
+  }
+  try {
+    const id = await create_manual_customer({
+      name,
+      email,
+      role: role === "buyer" || role === "both" ? role : "seller",
+      tier: tier as "starter" | "growth" | "founder" | "enterprise",
+    });
+    res.status(201).json({ ok: true, customer_id: id });
+  } catch (err) {
+    if (err instanceof DuplicateCustomerError) {
+      res.status(409).json({ ok: false, error: err.message });
+      return;
+    }
+    logger.error({ err }, "Could not create customer");
+    res.status(500).json({ ok: false, error: "Could not create customer" });
   }
 });
 

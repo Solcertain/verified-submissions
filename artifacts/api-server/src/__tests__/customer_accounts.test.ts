@@ -10,6 +10,7 @@ vi.mock("../services/customer_store.js", async (importActual) => {
     find_customer_by_api_key: vi.fn(),
     find_customer_by_outcome_token: vi.fn(async () => null),
     get_activeprospect_key: vi.fn(),
+    create_manual_customer: vi.fn(async () => "cccccccc-0000-0000-0000-00000000000c"),
   };
 });
 vi.mock("../services/submission_store.js", () => ({
@@ -38,7 +39,9 @@ import express, { type Express } from "express";
 import request from "supertest";
 import router from "../routes/index.js";
 import {
+  DuplicateCustomerError,
   SOLCERTAIN,
+  create_manual_customer,
   find_customer_by_api_key,
   find_customer_by_outcome_token,
   get_activeprospect_key,
@@ -274,5 +277,31 @@ describe("POST /api/v1/verify response", () => {
     expect(res.body.cached).toBe(true);
     expect(res.body.billable).toBe(false);
     expect(record_usage).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/admin/customers (hand-onboarded beta)", () => {
+  it("is internal-only: a customer key cannot create customers", async () => {
+    const res = await request(app()).post("/api/admin/customers").set("x-api-key", KEY_A).send({ name: "X", email: "x@x.com" });
+    expect(res.status).toBe(401);
+    expect(create_manual_customer).not.toHaveBeenCalled();
+  });
+
+  it("creates an active founder-tier customer by default", async () => {
+    const res = await request(app())
+      .post("/api/admin/customers")
+      .set("x-api-key", INTERNAL)
+      .send({ name: "Beta Co", email: "ops@beta.example", role: "buyer" });
+    expect(res.status).toBe(201);
+    expect(res.body.customer_id).toBe("cccccccc-0000-0000-0000-00000000000c");
+    expect(create_manual_customer).toHaveBeenCalledWith({ name: "Beta Co", email: "ops@beta.example", role: "buyer", tier: "founder" });
+  });
+
+  it("rejects a missing email, an unknown tier and a duplicate", async () => {
+    const missing = await request(app()).post("/api/admin/customers").set("x-api-key", INTERNAL).send({ name: "Beta Co" });
+    const tier = await request(app()).post("/api/admin/customers").set("x-api-key", INTERNAL).send({ name: "B", email: "b@b.com", tier: "internal" });
+    mocked(create_manual_customer).mockRejectedValueOnce(new DuplicateCustomerError("exists"));
+    const dup = await request(app()).post("/api/admin/customers").set("x-api-key", INTERNAL).send({ name: "B", email: "b@b.com" });
+    expect([missing.status, tier.status, dup.status]).toEqual([400, 400, 409]);
   });
 });
