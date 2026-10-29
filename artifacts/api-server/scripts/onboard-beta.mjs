@@ -1,6 +1,7 @@
 // Sets up one beta tester through the admin API: an active customer with no
-// Stripe subscription (usage counted, never billed), an API key and an outcome
-// URL. Optionally stores their ActiveProspect key.
+// Stripe subscription (usage counted, never billed), an API key, an outcome
+// URL and a one-time link to set their portal password. Optionally stores their
+// ActiveProspect key.
 //
 // Usage (from artifacts/api-server, with INTERNAL_API_KEY in the environment or .env.local):
 //   node scripts/onboard-beta.mjs --name "Acme Leads" --email ops@acme.com [--role buyer] [--tier founder]
@@ -54,6 +55,7 @@ const { customer_id } = await call("POST", "/admin/customers", {
 });
 const { key } = await call("POST", `/admin/customers/${customer_id}/api-keys`, { label: "beta" });
 const { path } = await call("POST", `/admin/customers/${customer_id}/outcome-tokens`, { label: "beta" });
+const { link } = await call("POST", `/admin/customers/${customer_id}/password-link`, {});
 
 let ap = "not set: store it later with PUT /api/admin/customers/<id>/activeprospect-key";
 if (process.env["CUSTOMER_ACTIVEPROSPECT_KEY"]) {
@@ -70,6 +72,10 @@ Customer id  ${customer_id}
 API key      ${key}
 Verify URL   ${public_base}/api/v1/verify
 Outcome URL  ${public_base}${path}
+Portal link  ${link}
+             (sets their password and signs them in; valid 7 days, one use)
 ActiveProspect key: ${ap}
 
-Send the API key and outcome URL to the tester over a private channel; neither can be shown again.`);
+Send these to the tester over a private channel; none can be shown again.
+The portal also lets them add their ActiveProspect key and make new keys themselves.
+A fresh portal link: POST /api/admin/customers/${customer_id}/password-link`);

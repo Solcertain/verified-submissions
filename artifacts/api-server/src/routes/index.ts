@@ -10,6 +10,7 @@ import outcomeLabelsRouter from "./outcome_labels.js";
 import v1Router from "./v1.js";
 import billingRouter from "./billing.js";
 import adminRouter from "./admin.js";
+import portalRouter from "./portal.js";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(outcomeLabelsRouter);
 router.use(v1Router);
 router.use(billingRouter);
 router.use(adminRouter);
+router.use(portalRouter);
 
 export default router;

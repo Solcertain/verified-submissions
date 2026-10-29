@@ -37,7 +37,7 @@ export async function load_report_rows(
 ): Promise<{ subs: ReportSubmission[]; outcomes: ReportOutcome[] }> {
   const only_customer = customer_id ? sql` and customer_id = ${customer_id}::uuid` : sql``;
   const s = await getDb().execute(sql`
-    select id, received_at,
+    select id, received_at, certificate_id,
            score_json->>'value' as score, status,
            score_json->>'classification' as classification,
            score_json->>'model_version' as model_version,
@@ -75,6 +75,7 @@ export async function load_report_rows(
         shadow_flags: a.shadow_findings.map((f) => f.flag).filter((f): f is string => !!f),
         source,
         is_mobile,
+        certificate_id: (r["certificate_id"] as string) ?? null,
         rescored: true,
       };
     }
@@ -90,6 +91,7 @@ export async function load_report_rows(
       shadow_flags: shadow.map((f) => f.flag).filter((f): f is string => !!f),
       source,
       is_mobile,
+      certificate_id: (r["certificate_id"] as string) ?? null,
       rescored: false,
     };
   });

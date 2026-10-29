@@ -93,3 +93,31 @@ ActiveProspect key in the same run; that needs `SECRETS_ENCRYPTION_KEY` in
 Vercel. Until a key is stored, verify answers `review` with "No ActiveProspect
 API key is configured for this account". To move a tester to paid later, send
 them an invite (`POST /api/admin/invites`) and Checkout.
+
+## Customer portal (minimal beta)
+
+Served by this API at `/portal` (same origin, so no CORS and no cross-domain
+cookies): `https://verified-submissions-api.vercel.app/portal` until
+`portal.verifiedsubmission.com` points at this project. Set `PORTAL_URL` when
+it moves; emailed links and set-password links are built from it.
+
+| Page | What it does |
+|---|---|
+| `/portal/login`, `/portal/forgot` | Email + password sign-in; five wrong passwords lock the user out for 15 minutes. Forgot-password emails a one-hour link when Resend is configured and answers the same either way. |
+| `/portal/set-password?t=…`, `/portal/reset-password?t=…` | One-time link (7 days from admin, 1 hour from forgot): sets the password, signs out other sessions, signs in. |
+| `/portal` (Activity) | Last 7 / 30 days: leads verified, approved / review / rejected, leads per day, why leads were flagged, the newest 50 leads (certificate id, score, verdict, flags, source). No personal data. |
+| `/portal/setup` | ActiveProspect key (stored encrypted), API keys (create, shown once; revoke), outcome URLs (create, shown once; revoke), integration guide. |
+
+JSON API under `/api/portal/*`, session-cookie only (an API key is not
+accepted): `login`, `logout`, `set-password`, `forgot`, `me`, `dashboard`,
+`api-keys`, `outcome-tokens`, `activeprospect-key`. Sessions are random tokens
+in an httpOnly, Secure, SameSite=Strict cookie, stored as sha256 in
+`customer_sessions` (14 days); state-changing requests from another origin are
+refused. Pages ship with a strict Content-Security-Policy (`script-src 'self'`,
+no inline script or style, nothing from other sites).
+
+Hand a tester their sign-in: `node scripts/onboard-beta.mjs …` prints a portal
+link, or `POST /api/admin/customers/:id/password-link` issues a fresh one.
+
+Deploy order: run `0005_portal_sessions.sql` (additive) **before** deploying
+this code; sign-in reads the new columns and table.

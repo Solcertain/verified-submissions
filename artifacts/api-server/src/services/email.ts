@@ -1,4 +1,5 @@
 import { logger } from "../lib/logger.js";
+import { portal_base } from "../lib/portal_url.js";
 
 // Transactional email through Resend's REST API (no SDK). With RESEND_API_KEY
 // unset nothing is sent and the call reports that, so local runs and tests
@@ -67,7 +68,7 @@ function escape_html(s: string): string {
 }
 
 function portal_url(path = ""): string {
-  return `${(process.env["PORTAL_URL"] ?? "https://portal.verifiedsubmission.com").replace(/\/$/, "")}${path}`;
+  return `${portal_base()}${path}`;
 }
 
 // One plain layout for every message: a heading, a few short paragraphs and at

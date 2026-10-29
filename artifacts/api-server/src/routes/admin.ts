@@ -12,6 +12,8 @@ import {
   set_activeprospect_key,
 } from "../services/customer_store.js";
 import { BillingError, create_invite_token, join_url } from "../services/billing.js";
+import { SET_PASSWORD_TTL_MS, issue_password_token } from "../services/portal_auth.js";
+import { portal_base } from "../lib/portal_url.js";
 
 // Solcertain-only account operations (INTERNAL_API_KEY, fails closed), until
 // the portal does them self-serve. Each returns a secret exactly once.
@@ -102,6 +104,25 @@ router.post("/admin/customers", internal, async (req: Request, res: Response) =>
     logger.error({ err }, "Could not create customer");
     res.status(500).json({ ok: false, error: "Could not create customer" });
   }
+});
+
+// POST /api/admin/customers/:id/password-link  { email? }
+// A one-time portal link, valid 7 days, for the customer's user (or the one
+// with this email). Replaces any earlier link. Shown once; send it privately.
+router.post("/admin/customers/:id/password-link", internal, async (req: Request, res: Response) => {
+  const id = await with_customer(req, res);
+  if (!id) return;
+  const issued = await issue_password_token(id, SET_PASSWORD_TTL_MS, str((req.body ?? {})["email"]));
+  if (!issued) {
+    res.status(404).json({ ok: false, error: "This customer has no portal user" });
+    return;
+  }
+  res.status(201).json({
+    ok: true,
+    email: issued.email,
+    link: `${portal_base()}/set-password?t=${encodeURIComponent(issued.token)}`,
+    expires_at: new Date(Date.now() + SET_PASSWORD_TTL_MS).toISOString(),
+  });
 });
 
 // POST /api/admin/customers/:id/api-keys  { label? }

@@ -17,6 +17,9 @@ export interface ReportSubmission {
   shadow_flags: string[];
   source: string; // lead_source when sent, else the certificate's site
   is_mobile: boolean | null;
+  // The TrustedForm certificate id: not personal, and how a customer matches a
+  // verdict to the lead in their own system.
+  certificate_id?: string | null;
   // Stored before scores were kept in the current format; rescored from its
   // stored features under the current model for this report.
   rescored?: boolean;

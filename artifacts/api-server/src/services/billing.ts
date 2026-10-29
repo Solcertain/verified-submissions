@@ -1,4 +1,5 @@
 import { logger } from "../lib/logger.js";
+import { portal_base } from "../lib/portal_url.js";
 import { sign_token, verify_token } from "../lib/crypto.js";
 import { stripe_request } from "./stripe_client.js";
 import { compute_minimum_topup } from "./usage.js";
@@ -62,7 +63,7 @@ export function read_invite_token(token: string): Invite | null {
 }
 
 export function join_url(token: string): string {
-  const base = (process.env["PORTAL_URL"] ?? "https://portal.verifiedsubmission.com").replace(/\/$/, "");
+  const base = portal_base();
   return `${base}/join?t=${encodeURIComponent(token)}`;
 }
 

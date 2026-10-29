@@ -4,6 +4,7 @@ import cors from "cors";
 import { pinoHttp } from "pino-http";
 import router from "./routes/index.js";
 import { stripe_webhook } from "./routes/billing.js";
+import portalPages from "./routes/portal_pages.js";
 import { logger } from "./lib/logger.js";
 
 type PinoRequest = IncomingMessage & { id?: unknown };
@@ -40,5 +41,6 @@ app.get("/", (_req: Request, res: Response) => {
 });
 
 app.use("/api", router);
+app.use("/portal", portalPages);
 
 export default app;

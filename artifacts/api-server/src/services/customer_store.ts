@@ -110,6 +110,24 @@ export async function revoke_api_key(customer_id: string, key_id: string): Promi
   return rows.length > 0;
 }
 
+// What the portal shows of a customer's keys: never the key itself.
+export async function list_api_keys(customer_id: string): Promise<
+  { id: string; prefix: string; label: string | null; created_at: Date; last_used_at: Date | null; revoked_at: Date | null }[]
+> {
+  return getDb()
+    .select({
+      id: apiKeysTable.id,
+      prefix: apiKeysTable.prefix,
+      label: apiKeysTable.label,
+      created_at: apiKeysTable.created_at,
+      last_used_at: apiKeysTable.last_used_at,
+      revoked_at: apiKeysTable.revoked_at,
+    })
+    .from(apiKeysTable)
+    .where(eq(apiKeysTable.customer_id, customer_id))
+    .orderBy(apiKeysTable.created_at);
+}
+
 export async function find_customer_by_api_key(key: string): Promise<CustomerContext | null> {
   const prefix = api_key_prefix(key);
   if (!prefix) return null;
@@ -140,6 +158,36 @@ export async function create_outcome_token(customer_id: string, label?: string):
     .insert(outcomeTokensTable)
     .values({ customer_id, token_hash: sha256_hex(token), label: label ?? null });
   return token;
+}
+
+export async function list_outcome_tokens(
+  customer_id: string,
+): Promise<{ id: string; label: string | null; created_at: Date; revoked_at: Date | null }[]> {
+  return getDb()
+    .select({
+      id: outcomeTokensTable.id,
+      label: outcomeTokensTable.label,
+      created_at: outcomeTokensTable.created_at,
+      revoked_at: outcomeTokensTable.revoked_at,
+    })
+    .from(outcomeTokensTable)
+    .where(eq(outcomeTokensTable.customer_id, customer_id))
+    .orderBy(outcomeTokensTable.created_at);
+}
+
+export async function revoke_outcome_token(customer_id: string, token_id: string): Promise<boolean> {
+  const rows = await getDb()
+    .update(outcomeTokensTable)
+    .set({ revoked_at: new Date() })
+    .where(
+      and(
+        eq(outcomeTokensTable.id, token_id),
+        eq(outcomeTokensTable.customer_id, customer_id),
+        isNull(outcomeTokensTable.revoked_at),
+      ),
+    )
+    .returning({ id: outcomeTokensTable.id });
+  return rows.length > 0;
 }
 
 export async function find_customer_by_outcome_token(token: string): Promise<CustomerContext | null> {
@@ -173,6 +221,15 @@ export async function get_activeprospect_key(customer: CustomerContext): Promise
     logger.error({ err, customer_id: customer.id }, "Could not decrypt ActiveProspect key");
     return null;
   }
+}
+
+export async function has_activeprospect_key(customer_id: string): Promise<boolean> {
+  const rows = await getDb()
+    .select({ enc: customerSecretsTable.activeprospect_key_encrypted })
+    .from(customerSecretsTable)
+    .where(eq(customerSecretsTable.customer_id, customer_id))
+    .limit(1);
+  return !!rows[0]?.enc;
 }
 
 export async function set_activeprospect_key(customer_id: string, key: string): Promise<void> {

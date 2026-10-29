@@ -38,11 +38,29 @@ export const customerUsersTable = pgTable(
     reset_expires_at: timestamp("reset_expires_at", { withTimezone: true }),
     last_login_at: timestamp("last_login_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    // Migration 0005.
+    failed_logins: integer("failed_logins").notNull().default(0),
+    locked_until: timestamp("locked_until", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("customer_users_email_idx").on(sql`lower(${table.email})`),
     index("customer_users_customer_idx").on(table.customer_id),
   ],
+);
+
+// Portal sessions (migration 0005). Only a sha256 of the cookie token is kept.
+export const customerSessionsTable = pgTable(
+  "customer_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    user_id: uuid("user_id").notNull().references(() => customerUsersTable.id, { onDelete: "cascade" }),
+    customer_id: uuid("customer_id").notNull().references(() => customersTable.id, { onDelete: "cascade" }),
+    token_hash: text("token_hash").notNull().unique(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    last_seen_at: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("customer_sessions_user_idx").on(table.user_id)],
 );
 
 export const apiKeysTable = pgTable(
