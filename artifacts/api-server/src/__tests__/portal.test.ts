@@ -237,6 +237,13 @@ describe("portal pages and admin link", () => {
     }
     const js = await request(app()).get("/portal/app.js");
     expect(js.headers["content-type"]).toMatch(/javascript/);
+    const theme = await request(app()).get("/portal/theme.js");
+    expect(theme.text).toContain("vs.portal.theme");
+    for (const logo of ["/portal/brand/logo-light.svg", "/portal/brand/logo-dark.svg", "/portal/brand/mark.svg"]) {
+      const res = await request(app()).get(logo);
+      expect(res.status).toBe(200);
+      expect(res.headers["content-type"]).toMatch(/image\/svg\+xml/);
+    }
   });
 
   it("issues a set-password link to the internal key only", async () => {
