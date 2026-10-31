@@ -6,6 +6,7 @@ import {
   create_api_key,
   create_manual_customer,
   create_outcome_token,
+  find_customer_id_by_email,
   get_customer,
   list_customers,
   revoke_api_key,
@@ -103,6 +104,55 @@ router.post("/admin/customers", internal, async (req: Request, res: Response) =>
     }
     logger.error({ err }, "Could not create customer");
     res.status(500).json({ ok: false, error: "Could not create customer" });
+  }
+});
+
+// POST /api/admin/onboard  { email, name?, company?, role?, founder? }
+// What the waitlist admin's Approve and Re-send invite call. Creates the
+// customer by hand (founder tier for founders, starter otherwise; no Stripe, so
+// nothing is billed), or reuses the one this email already belongs to, then
+// issues a fresh 7-day portal link, which voids any earlier one. The link is
+// returned once, for the caller to email; it is never stored in plain text.
+router.post("/admin/onboard", internal, async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const email = str(body["email"])?.toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ ok: false, error: "A valid email is required" });
+    return;
+  }
+  const founder = body["founder"] === true;
+  const role = str(body["role"]);
+  try {
+    let customer_id = await find_customer_id_by_email(email);
+    const created = !customer_id;
+    if (!customer_id) {
+      customer_id = await create_manual_customer({
+        name: (str(body["company"]) ?? str(body["name"]) ?? email).slice(0, 120),
+        email,
+        role: role === "buyer" || role === "both" ? role : "seller",
+        tier: founder ? "founder" : "starter",
+      });
+    }
+    const issued = await issue_password_token(customer_id, SET_PASSWORD_TTL_MS, email);
+    if (!issued) {
+      res.status(409).json({ ok: false, error: "This email belongs to a customer with no portal login for it" });
+      return;
+    }
+    res.status(created ? 201 : 200).json({
+      ok: true,
+      created,
+      customer_id,
+      email: issued.email,
+      link: `${portal_base()}/set-password?t=${encodeURIComponent(issued.token)}`,
+      expires_at: new Date(Date.now() + SET_PASSWORD_TTL_MS).toISOString(),
+    });
+  } catch (err) {
+    if (err instanceof DuplicateCustomerError) {
+      res.status(409).json({ ok: false, error: err.message });
+      return;
+    }
+    logger.error({ err }, "Onboard failed");
+    res.status(500).json({ ok: false, error: "Could not set up the account" });
   }
 });
 

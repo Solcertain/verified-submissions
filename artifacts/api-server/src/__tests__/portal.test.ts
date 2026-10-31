@@ -31,6 +31,8 @@ vi.mock("../services/customer_store.js", async (importActual) => {
     list_outcome_tokens: vi.fn(async () => []),
     has_activeprospect_key: vi.fn(async () => false),
     set_activeprospect_key: vi.fn(async () => undefined),
+    find_customer_id_by_email: vi.fn(async () => null),
+    create_manual_customer: vi.fn(async () => "cccccccc-0000-0000-0000-00000000000c"),
   };
 });
 vi.mock("../services/report_store.js", () => ({ load_report_rows: vi.fn(async () => ({ subs: [], outcomes: [] })) }));
@@ -51,7 +53,15 @@ import {
   resolve_session,
   set_password_with_token,
 } from "../services/portal_auth.js";
-import { create_api_key, list_api_keys, revoke_api_key, set_activeprospect_key, type CustomerContext } from "../services/customer_store.js";
+import {
+  create_api_key,
+  create_manual_customer,
+  find_customer_id_by_email,
+  list_api_keys,
+  revoke_api_key,
+  set_activeprospect_key,
+  type CustomerContext,
+} from "../services/customer_store.js";
 import { load_report_rows } from "../services/report_store.js";
 import { send_email } from "../services/email.js";
 import type { ReportSubmission } from "../services/verification_report.js";
@@ -253,5 +263,47 @@ describe("portal pages and admin link", () => {
     expect(denied.status).toBe(401);
     expect(ok.status).toBe(201);
     expect(ok.body.link).toMatch(/\/portal\/set-password\?t=tok$/);
+  });
+});
+
+describe("POST /api/admin/onboard (waitlist Approve)", () => {
+  beforeEach(() => {
+    mocked(issue_password_token).mockResolvedValue({ token: "tok", email: "ops@new.example" });
+  });
+
+  it("is internal-only", async () => {
+    const res = await request(app()).post("/api/admin/onboard").set("cookie", COOKIE).send({ email: "ops@new.example" });
+    expect(res.status).toBe(401);
+    expect(create_manual_customer).not.toHaveBeenCalled();
+  });
+
+  it("creates a founder-tier customer for a founder and returns a portal link", async () => {
+    const res = await request(app())
+      .post("/api/admin/onboard")
+      .set("x-api-key", INTERNAL)
+      .send({ email: "OPS@New.example", name: "Pat", company: "New Leads Co", role: "buyer", founder: true });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ ok: true, created: true, customer_id: "cccccccc-0000-0000-0000-00000000000c" });
+    expect(res.body.link).toMatch(/\/portal\/set-password\?t=tok$/);
+    expect(create_manual_customer).toHaveBeenCalledWith({ name: "New Leads Co", email: "ops@new.example", role: "buyer", tier: "founder" });
+  });
+
+  it("gives everyone else the starter tier", async () => {
+    await request(app()).post("/api/admin/onboard").set("x-api-key", INTERNAL).send({ email: "a@b.example" });
+    expect(mocked(create_manual_customer).mock.calls[0]![0]).toMatchObject({ name: "a@b.example", tier: "starter", role: "seller" });
+  });
+
+  it("reuses an existing customer and only issues a new link (Re-send invite)", async () => {
+    mocked(find_customer_id_by_email).mockResolvedValueOnce(A.id);
+    const res = await request(app()).post("/api/admin/onboard").set("x-api-key", INTERNAL).send({ email: "ops@acme.example" });
+    expect(res.status).toBe(200);
+    expect(res.body.created).toBe(false);
+    expect(create_manual_customer).not.toHaveBeenCalled();
+    expect(issue_password_token).toHaveBeenCalledWith(A.id, expect.any(Number), "ops@acme.example");
+  });
+
+  it("rejects a missing or malformed email", async () => {
+    const res = await request(app()).post("/api/admin/onboard").set("x-api-key", INTERNAL).send({ email: "nope" });
+    expect(res.status).toBe(400);
   });
 });

@@ -259,6 +259,23 @@ export async function customer_exists_for_email(email: string): Promise<boolean>
   return rows.length > 0;
 }
 
+// The customer this email belongs to, as their sign-up email or a portal login.
+export async function find_customer_id_by_email(email: string): Promise<string | null> {
+  const lower = email.toLowerCase();
+  const by_user = await getDb()
+    .select({ id: customerUsersTable.customer_id })
+    .from(customerUsersTable)
+    .where(sql`lower(${customerUsersTable.email}) = ${lower}`)
+    .limit(1);
+  if (by_user[0]) return by_user[0].id;
+  const by_signup = await getDb()
+    .select({ id: customersTable.id })
+    .from(customersTable)
+    .where(sql`lower(${customersTable.waitlist_email}) = ${lower}`)
+    .limit(1);
+  return by_signup[0]?.id ?? null;
+}
+
 export interface NewCustomer {
   name: string;
   role: string;
