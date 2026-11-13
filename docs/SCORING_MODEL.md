@@ -132,7 +132,8 @@ total is rounded and clamped to 0–100.
 | `input_method` | `no_typing_observed` | Form filled with no typing | −25 | via class |
 | `input_method` | `pasted_input` | Any field pasted | −10 | |
 | `superhuman_typing` | `superhuman_typing_speed` | Typed and kpm > 600 | −15 | |
-| `synthetic_typing` | `synthetic_typing` | Typed but kpm = 0, or wpm > kpm | −40 | **yes** |
+| `synthetic_typing` | `synthetic_typing` | Typed but kpm = 0, or wpm > kpm at kpm ≥ 400 (since 0.5) | −40 | **yes** |
+| `repeat_submission` | `repeat_submission` | Same phone or email on another of this customer's certificates in the last 90 days (since 0.5) | −10 | |
 | `automation_environment` | `automation_environment` | Desktop Linux and IP geolocates to a country only | −15 | |
 | `session_duration` | `instant_submission` | < 5 s | −30 | |
 | `session_duration` | `brief_session` | 5–14 s | −12 | |
@@ -270,6 +271,25 @@ complete list of what runs.
   are returned in `shadow_findings`, stored in `score_json.shadow_findings` and
   logged as `"shadow detector findings"` with the analysis id and live score.
 
+### Changed in 0.5 (2026-11-13)
+
+**`synthetic_typing` narrowed.** Words outnumbering keystrokes is also what a
+phone keyboard produces: predictive text, swipe typing and autocorrect insert a
+whole word per tap. Oct 12 – Nov 11 the old rule fired on 49 real leads (iOS 32,
+Android 13, Windows 4) at 24–252 kpm; all 49 were sold and none came back. The
+one operator-confirmed fraud (`bd14ca1c`) ran 571 kpm / 631 wpm. Words-over-keys
+now forces review only from 400 kpm; below that it is recorded in shadow as
+`keyboard_word_insertion` (0 points). Zero keystrokes with typed text still
+always forces review.
+
+**`repeat_submission` added, active.** Same window: 4 of 33 sold repeat leads
+were returned (12%, all as duplicates) against 10 of 686 first-time leads (1.5%).
+The lookup compares the normalised phone (last ten digits) and lowercased email
+already kept in `raw_payload_json` for certificate-reuse detection, scoped to
+the calling customer, excluding the same certificate. It costs points and
+publishes the flag; it does not force review, because most repeats were sold
+and kept. A failed lookup scores nothing.
+
 ### In shadow since 2026-10-17 (plausibility family)
 
 | Detector | Flag | Looks for | Proposed points |
@@ -300,6 +320,7 @@ Promotion rules and the monthly bot run are in [BOT_LAB.md](BOT_LAB.md).
 | 0.4-insights | 2026-10-16 | Superhuman typing, stale certificate, synthetic typing, automation environment |
 | (refactor) | 2026-10-16 | Detectors, shadow mode, bot lab. No scoring change — 490 snapshot cases identical |
 | (consistency) | 2026-10-17 | Generic endpoints, stored status, routing, Sheets and webhooks moved onto this model. No scoring change |
+| 0.5 | 2026-11-13 | `synthetic_typing` narrowed to machine speed (slow case → shadow `keyboard_word_insertion`); `repeat_submission` active |
 
 ---
 

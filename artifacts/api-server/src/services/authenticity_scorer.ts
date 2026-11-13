@@ -103,6 +103,9 @@ export interface ScoreOptions {
   landing_page_url?: string;
   // The lead's own details, for plausibility checks.
   lead?: LeadFields;
+  // Other leads for this customer with the same phone or email in the repeat
+  // window, looked up before scoring (see submission_store.find_prior_submissions).
+  prior_submissions?: { count: number; days_since_last: number };
 }
 
 export function score_authenticity(

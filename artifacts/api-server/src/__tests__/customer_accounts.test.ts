@@ -16,6 +16,7 @@ vi.mock("../services/customer_store.js", async (importActual) => {
 vi.mock("../services/submission_store.js", () => ({
   save_submission: vi.fn(async () => ({ id: "analysis-1" })),
   get_submission_by_certificate: vi.fn(async () => null),
+  find_prior_submissions: vi.fn(async () => undefined),
   leadSubmissionsTable: {},
 }));
 vi.mock("../services/usage.js", () => ({ record_usage: vi.fn(async () => ({ billable: true })) }));

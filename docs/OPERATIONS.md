@@ -206,6 +206,24 @@ Repeating the same label is a no-op; a different later label replaces the earlie
 one in the report. Keep `reason` free of consumer details. First one recorded:
 lead `bd14ca1c` (2026-10-17), caught by `synthetic_typing`.
 
+### Weekly label queue (since 2026-11-13)
+
+Open **https://verified-submissions-api.vercel.app/portal/labels** and unlock it
+with `INTERNAL_API_KEY` (kept in that browser tab only). It lists, from the last
+7 days by default, every unlabelled lead that is:
+
+- **held back** (review or reject): was the engine right to stop it?
+- **returned with fraud-sounding buyer wording** ("didn't submit", "not a real
+  person", "fake", "not the homeowner", "wrong number"): did the engine let one through?
+- **a random approved lead** (5 per week, stable within the ISO week): is "approved" trustworthy?
+
+Mark each **Fraud**, **Genuine** or **Skip**. Buttons call `POST /api/outcomes/label`
+with `labelled_by: "label-queue"`. Labelled leads never reappear. The data
+behind the page is `GET /api/admin/label-queue?days=7` (internal key). Once a
+period has 10 or more labels, the report's "Confirmed by a person" section adds
+a per-flag table: of the labelled leads each flag fired on, how many were fraud.
+Ten minutes a week here is the single biggest input to calibrating the model.
+
 ### Returns sync
 
 `GET /api/cron/sync-returns` runs daily at 10:00 UTC (`vercel.json`). It reads

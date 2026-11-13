@@ -261,11 +261,19 @@ describe("AI browser agent", () => {
     expect(r.classification).not.toMatch(/REAL_HUMAN/);
   });
 
-  it("flags words outnumbering keystrokes", () => {
+  it("flags words outnumbering keystrokes at machine speed", () => {
+    const r = score_authenticity(
+      F({ bot_detected: false, input_methods: ["typing"], typed: true, form_input_kpm: 450, form_input_wpm: 600 }),
+    );
+    expect(r.risk_flags).toContain("synthetic_typing");
+  });
+
+  it("records words outnumbering keystrokes at human speed in shadow only (0.5)", () => {
     const r = score_authenticity(
       F({ bot_detected: false, input_methods: ["typing"], typed: true, form_input_kpm: 120, form_input_wpm: 300 }),
     );
-    expect(r.risk_flags).toContain("synthetic_typing");
+    expect(r.risk_flags).not.toContain("synthetic_typing");
+    expect(r.shadow_findings.map((f) => f.flag)).toContain("keyboard_word_insertion");
   });
 
   it("leaves the highest real wpm/kpm ratio observed (0.95) alone", () => {

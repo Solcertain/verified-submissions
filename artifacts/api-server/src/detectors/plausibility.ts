@@ -147,3 +147,29 @@ export const phone_unverified: Detector = {
     };
   },
 };
+
+// The same person on a new certificate. The phone or email matched another
+// lead for this customer within REPEAT_WINDOW_DAYS; the lookup runs before
+// scoring and arrives as options.prior_submissions. Evidence gives the count
+// and the gap, never the contact detail itself.
+export const repeat_submission: Detector = {
+  id: "repeat_submission",
+  family: "plausibility",
+  status: "active",
+  description: "The same phone or email arrived on another lead within 90 days.",
+  evaluate({ options }) {
+    const prior = options.prior_submissions;
+    if (!prior || prior.count < 1) return NONE;
+    const when =
+      prior.days_since_last < 1 ? "earlier the same day" : `${Math.round(prior.days_since_last)} days earlier`;
+    return {
+      findings: [
+        {
+          points: -R.REPEAT_SUBMISSION,
+          flag: "repeat_submission",
+          evidence: `This phone or email already came in on ${prior.count} other lead${prior.count === 1 ? "" : "s"}, most recently ${when}.`,
+        },
+      ],
+    };
+  },
+};

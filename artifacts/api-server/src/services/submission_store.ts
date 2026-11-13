@@ -1,6 +1,6 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { pgTable, text, uuid, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { SOLCERTAIN_CUSTOMER_ID } from "./customer_tables.js";
 import pg from "pg";
 import { logger } from "../lib/logger.js";
@@ -153,5 +153,43 @@ export async function get_submission_by_certificate(
   } catch (err) {
     logger.error({ err }, "submission_store: get_submission_by_certificate failed");
     return null;
+  }
+}
+
+// Other leads for this customer whose phone or email matches, on a different
+// certificate, within the last window_days. Compares the normalized values the
+// certificate-reuse check already keeps in raw_payload_json (last ten digits of
+// the phone, lowercased email). Returns undefined when there is nothing to
+// compare or the lookup fails: a storage problem never costs a lead points.
+export async function find_prior_submissions(
+  customer_id: string,
+  certificate_url: string,
+  phone: string | null,
+  email: string | null,
+  window_days: number,
+): Promise<{ count: number; days_since_last: number } | undefined> {
+  const digits = (phone ?? "").replace(/\D/g, "").slice(-10);
+  const p = digits.length === 10 ? digits : "";
+  const e = (email ?? "").trim().toLowerCase();
+  if (!p && !e) return undefined;
+  try {
+    const client = getDb();
+    const result = await client.execute(sql`
+      select count(distinct certificate_url)::int as count,
+             extract(epoch from (now() - max(received_at))) / 86400 as days
+        from lead_submissions
+       where customer_id = ${customer_id}
+         and certificate_url is distinct from ${certificate_url}
+         and received_at > now() - make_interval(days => ${window_days})
+         and (
+           (${p}::text <> '' and right(regexp_replace(coalesce(raw_payload_json->>'phone', ''), '[^0-9]', '', 'g'), 10) = ${p}::text)
+           or (${e}::text <> '' and lower(trim(coalesce(raw_payload_json->>'email', ''))) = ${e}::text)
+         )`);
+    const row = result.rows[0] as { count: number; days: string | number | null } | undefined;
+    if (!row || !row.count) return undefined;
+    return { count: Number(row.count), days_since_last: Number(row.days ?? 0) };
+  } catch (err) {
+    logger.error({ err }, "submission_store: find_prior_submissions failed");
+    return undefined;
   }
 }

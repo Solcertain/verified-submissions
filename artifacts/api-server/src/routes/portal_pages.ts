@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { PORTAL_CSS, PORTAL_HTML, PORTAL_JS, PORTAL_THEME_JS } from "../portal/assets.js";
 import { LOGO_DARK, LOGO_LIGHT, MARK_LIGHT } from "../portal/brand.js";
+import { LABELS_CSS, LABELS_HTML, LABELS_JS } from "../portal/labels.js";
 
 // Serves the customer portal at /portal (mounted in app.ts). Every page path
 // gets the same shell; the script picks the view from the URL.
@@ -43,6 +44,14 @@ router.get("/app.css", asset("text/css", PORTAL_CSS));
 router.get("/brand/logo-light.svg", asset("image/svg+xml", LOGO_LIGHT, "public, max-age=86400"));
 router.get("/brand/logo-dark.svg", asset("image/svg+xml", LOGO_DARK, "public, max-age=86400"));
 router.get("/brand/mark.svg", asset("image/svg+xml", MARK_LIGHT, "public, max-age=86400"));
+
+// Operator-only labelling page; unlocked with the internal key, see portal/labels.ts.
+router.get("/labels.js", asset("application/javascript", LABELS_JS));
+router.get("/labels.css", asset("text/css", LABELS_CSS));
+router.get("/labels", (_req: Request, res: Response) => {
+  secure_headers(res);
+  res.type("html").set("Cache-Control", "no-store").send(LABELS_HTML);
+});
 
 // The shell for /portal and every view under it. no-store, because a set-
 // password link carries its token in the query string.

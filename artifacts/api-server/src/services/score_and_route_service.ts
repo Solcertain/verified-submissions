@@ -11,6 +11,7 @@ import {
 import { infer_field_roles, normalize_submission } from "./field_inference.js";
 import { score_lead, type ScoreResult } from "./scoring_engine.js";
 import { score_authenticity } from "./authenticity_scorer.js";
+import { REPEAT_WINDOW_DAYS } from "../config/authenticity_rules.js";
 import { to_score_result } from "./verdict.js";
 import {
   route_lead,
@@ -25,6 +26,7 @@ import { read_lead_fields, storable_payload, type LeadFields } from "./lead_fiel
 import {
   save_submission,
   get_submission_by_certificate,
+  find_prior_submissions,
 } from "./submission_store.js";
 import type { CustomerContext } from "./customer_store.js";
 import { record_usage } from "./usage.js";
@@ -68,6 +70,7 @@ export type ScoreAndRouteOutcome =
       certificate_reused: boolean;
       landing_page_url: string | undefined;
       lead: LeadFields;
+      prior_submissions?: { count: number; days_since_last: number };
     }
   | {
       kind: "claim_failed";
@@ -85,6 +88,7 @@ export type ScoreAndRouteOutcome =
       certificate_reused: boolean;
       landing_page_url: string | undefined;
       lead: LeadFields;
+      prior_submissions?: { count: number; days_since_last: number };
       score: ScoreResult;
       routing: RoutingResult;
       sheet_result: SheetResult;
@@ -171,6 +175,16 @@ export async function scoreAndRouteLead(
   const landing_page_url = read_landing_page_url(input.raw_payload);
   const lead = read_lead_fields(input.raw_payload);
 
+  // The same person on another certificate. Looked up for fresh and cached
+  // requests alike, so a retry reports the same repeat finding.
+  const prior_submissions = await find_prior_submissions(
+    input.customer.id,
+    certificate_url,
+    lead.phone,
+    lead.email,
+    REPEAT_WINDOW_DAYS,
+  );
+
   // Dedup cache — return a previously stored result unless forced.
   if (!input.force) {
     const existing = await get_submission_by_certificate(input.customer.id, certificate_url, undefined);
@@ -191,6 +205,7 @@ export async function scoreAndRouteLead(
         ),
         landing_page_url,
         lead,
+        prior_submissions,
       };
     }
   }
@@ -244,6 +259,7 @@ export async function scoreAndRouteLead(
     required_consent_terms: consent_terms,
     landing_page_url,
     lead,
+    prior_submissions,
   });
   const score = to_score_result(authenticity, legacy_score.metrics);
 
@@ -353,6 +369,7 @@ export async function scoreAndRouteLead(
     certificate_reused: false,
     landing_page_url,
     lead,
+    prior_submissions,
     score,
     routing,
     sheet_result,

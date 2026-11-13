@@ -177,6 +177,7 @@ export function verdict_for_outcome(outcome: ScoreAndRouteOutcome): OutcomeVerdi
           required_consent_terms: outcome.required_consent_terms,
           landing_page_url: outcome.landing_page_url,
           lead: outcome.lead,
+          prior_submissions: outcome.prior_submissions,
         }),
         certificate_id: outcome.parsed_lead.certificate_id || certificate_id_from_url(outcome.certificate_url),
         session_seconds: outcome.features.seconds_on_page,
@@ -205,6 +206,7 @@ export function verdict_for_outcome(outcome: ScoreAndRouteOutcome): OutcomeVerdi
           certificate_reused: outcome.certificate_reused,
           landing_page_url: outcome.landing_page_url,
           lead: outcome.lead,
+          prior_submissions: outcome.prior_submissions,
         }),
         certificate_id:
           stored_certificate_id(outcome.parsed_lead) || certificate_id_from_url(outcome.certificate_url),

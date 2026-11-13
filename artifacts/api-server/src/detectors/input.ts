@@ -75,8 +75,13 @@ export const superhuman_typing: Detector = {
   },
 };
 
-// Typed text that no keystrokes could have produced: zero keystrokes, or more
-// words than keystrokes. A person cannot do either; an injecting agent does.
+// Typed text that no real keystrokes could have produced: zero keystrokes, or
+// more words than keystrokes at a speed no person on our forms has shown. See
+// SYNTHETIC_FAST_KPM for why the slower case is no longer evidence of an agent.
+function words_over_keys(kpm: number, wpm: number | null): boolean {
+  return wpm !== null && wpm > kpm;
+}
+
 export const synthetic_typing: Detector = {
   id: "synthetic_typing",
   family: "input",
@@ -86,7 +91,8 @@ export const synthetic_typing: Detector = {
     if (f.typed !== true || f.form_input_kpm === null) return NONE;
     const kpm = f.form_input_kpm;
     const wpm = f.form_input_wpm;
-    if (!(kpm === 0 || (wpm !== null && wpm > kpm))) return NONE;
+    const fast_injection = words_over_keys(kpm, wpm) && kpm >= R.SYNTHETIC_FAST_KPM;
+    if (!(kpm === 0 || fast_injection)) return NONE;
     return {
       findings: [
         {
@@ -96,7 +102,31 @@ export const synthetic_typing: Detector = {
           evidence:
             kpm === 0
               ? "Text was entered as typing but with zero keystrokes — a person cannot type without pressing keys."
-              : `More words (${Math.round(wpm!)}/min) than keystrokes (${Math.round(kpm)}/min) — impossible for real typing.`,
+              : `More words (${Math.round(wpm!)}/min) than keystrokes (${Math.round(kpm)}/min) at machine speed — impossible for real typing.`,
+        },
+      ],
+    };
+  },
+};
+
+// The slow words-over-keys pattern: what predictive text and swipe typing
+// produce on a phone. Recorded in shadow so it stays measurable against
+// outcomes; it costs a lead nothing.
+export const keyboard_word_insertion: Detector = {
+  id: "keyboard_word_insertion",
+  family: "input",
+  status: "shadow",
+  description: "Whole words inserted per keystroke at human speed, as phone keyboards' predictive and swipe typing do.",
+  evaluate({ features: f }) {
+    if (f.typed !== true || f.form_input_kpm === null) return NONE;
+    const kpm = f.form_input_kpm;
+    if (kpm === 0 || kpm >= R.SYNTHETIC_FAST_KPM || !words_over_keys(kpm, f.form_input_wpm)) return NONE;
+    return {
+      findings: [
+        {
+          points: -R.KEYBOARD_WORD_INSERTION,
+          flag: "keyboard_word_insertion",
+          evidence: "More words than keystrokes at a human typing speed — the pattern of predictive or swipe typing.",
         },
       ],
     };

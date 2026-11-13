@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../services/submission_store.js", () => ({
   save_submission: vi.fn(async () => ({ id: "analysis-123" })),
   get_submission_by_certificate: vi.fn(async () => null),
+  find_prior_submissions: vi.fn(async () => undefined),
   leadSubmissionsTable: {},
 }));
 vi.mock("../services/google_sheets.js", () => ({
@@ -26,7 +27,7 @@ import express, { type Express } from "express";
 import request from "supertest";
 import router from "../routes/index.js";
 import { claim_certificate } from "../services/trustedform_client.js";
-import { get_submission_by_certificate, save_submission } from "../services/submission_store.js";
+import { find_prior_submissions, get_submission_by_certificate, save_submission } from "../services/submission_store.js";
 import { MODEL_VERSION } from "../config/authenticity_rules.js";
 import { extract_features } from "../services/feature_extractor.js";
 import agent_claim from "./fixtures/botlab/agents/chatgpt_agent_2026-10-16.json";
@@ -225,6 +226,16 @@ describe("one model across endpoints", () => {
     expect(lp.vs_status).toBe("approved");
     expect(generic.score.status).toBe("approved");
     expect(generic.score.value).toBe(lp.vs_score);
+  });
+
+  it("reports a repeat phone or email to Lead Prosper and costs 10 points", async () => {
+    const clean = await both(HUMAN_CLAIM);
+    (find_prior_submissions as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1, days_since_last: 12 });
+    const repeat = await both(HUMAN_CLAIM);
+    (find_prior_submissions as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    expect(repeat.lp.vs_risk_flags).toContain("repeat_submission");
+    expect(repeat.lp.vs_score).toBe(clean.lp.vs_score - 10);
+    expect(repeat.lp.vs_status).toBe("approved");
   });
 
   it("rescores a cached certificate on the current model", async () => {

@@ -1,10 +1,10 @@
 import type { Detector } from "./types.js";
-import { bot_check, input_method, superhuman_typing, synthetic_typing } from "./input.js";
+import { bot_check, input_method, keyboard_word_insertion, superhuman_typing, synthetic_typing } from "./input.js";
 import { automation_environment } from "./environment.js";
 import { session_duration } from "./session.js";
 import { consent_language } from "./consent.js";
 import { certificate_page_mismatch, certificate_reuse, stale_certificate } from "./certificate.js";
-import { disposable_email, ip_state_mismatch, phone_unverified, placeholder_name } from "./plausibility.js";
+import { disposable_email, ip_state_mismatch, phone_unverified, placeholder_name, repeat_submission } from "./plausibility.js";
 
 // Every check the engine runs, in order. Order only affects the order of
 // sentences in vs_reason, never the score.
@@ -23,9 +23,13 @@ export const DETECTORS: readonly Detector[] = [
   stale_certificate,
   certificate_reuse,
   certificate_page_mismatch,
+  // Active since 0.5.
+  repeat_submission,
   // Shadow since 2026-10-17: measured on live traffic, not yet scored.
   placeholder_name,
   disposable_email,
   ip_state_mismatch,
   phone_unverified,
+  // Shadow since 0.5: the slow half of the old synthetic_typing rule.
+  keyboard_word_insertion,
 ];

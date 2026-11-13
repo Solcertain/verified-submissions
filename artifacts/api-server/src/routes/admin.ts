@@ -15,6 +15,7 @@ import {
 import { BillingError, create_invite_token, join_url } from "../services/billing.js";
 import { SET_PASSWORD_TTL_MS, issue_password_token } from "../services/portal_auth.js";
 import { portal_base } from "../lib/portal_url.js";
+import { load_label_queue } from "../services/label_queue.js";
 
 // Solcertain-only account operations (INTERNAL_API_KEY, fails closed), until
 // the portal does them self-serve. Each returns a secret exactly once.
@@ -215,6 +216,25 @@ router.post("/admin/customers/:id/outcome-tokens", internal, async (req: Request
   if (!id) return;
   const token = await create_outcome_token(id, str((req.body ?? {})["label"]));
   res.status(201).json({ ok: true, token, path: `/api/v1/outcomes/${token}` });
+});
+
+// GET /api/admin/label-queue?days=7[&customer_id=…]
+// The leads a person should confirm this week; see services/label_queue.ts.
+// Labels are written through POST /api/outcomes/label.
+router.get("/admin/label-queue", internal, async (req: Request, res: Response) => {
+  const days = Math.min(Math.max(Number(req.query["days"]) || 7, 1), 90);
+  const customer_id = str(req.query["customer_id"]);
+  if (customer_id && !/^[0-9a-f-]{36}$/i.test(customer_id)) {
+    res.status(400).json({ ok: false, error: "customer_id must be a uuid" });
+    return;
+  }
+  try {
+    const items = await load_label_queue(days, customer_id);
+    res.set("Cache-Control", "no-store").json({ ok: true, days, count: items.length, items });
+  } catch (err) {
+    logger.error({ err }, "Label queue failed");
+    res.status(500).json({ ok: false, error: "Label queue failed" });
+  }
 });
 
 export default router;

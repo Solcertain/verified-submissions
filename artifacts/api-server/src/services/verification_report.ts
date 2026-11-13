@@ -239,6 +239,34 @@ const RESULT_TEXT: Record<ConfirmedCase["engine_result"], string> = {
   correctly_approved: "Correctly approved",
 };
 
+// Once enough leads carry a person's verdict, each engine flag can be judged:
+// of the labelled leads it fired on, how many were really fraud. Below the
+// threshold the numbers are too few to mean anything, so nothing is printed.
+export const FLAG_ACCURACY_MIN_LABELS = 10;
+
+export function flag_accuracy_lines(cases: VerificationReport["confirmed"]["cases"]): string[] {
+  if (cases.length < FLAG_ACCURACY_MIN_LABELS) return [];
+  const per = new Map<string, { fraud: number; genuine: number }>();
+  for (const k of cases) {
+    for (const flag of k.flags) {
+      const t = per.get(flag) ?? { fraud: 0, genuine: 0 };
+      t[k.label] += 1;
+      per.set(flag, t);
+    }
+  }
+  if (per.size === 0) return [];
+  const rows = [...per.entries()].sort((a, b) => b[1].fraud + b[1].genuine - (a[1].fraud + a[1].genuine));
+  return [
+    "",
+    "| Flag | Labelled leads it fired on | Really fraud |",
+    "|---|---|---|",
+    ...rows.map(([flag, t]) => {
+      const n = t.fraud + t.genuine;
+      return `| \`${flag}\` | ${n} | ${t.fraud} (${Math.round((100 * t.fraud) / n)}%) |`;
+    }),
+  ];
+}
+
 function confirmed_markdown(c: VerificationReport["confirmed"]): string {
   if (c.cases.length === 0) return "_No leads confirmed by a person in this period yet._\n";
   const lines: string[] = [];
@@ -248,6 +276,7 @@ function confirmed_markdown(c: VerificationReport["confirmed"]): string {
     );
   }
   if (c.genuine) lines.push(`- ${c.genuine} leads confirmed genuine; ${c.false_alarms} of them had been held back for review.`);
+  lines.push(...flag_accuracy_lines(c.cases));
   lines.push("");
   for (const k of c.cases) {
     const why = k.flags.map((f) => `\`${f}\`${FLAG_MEANING[f] ? ` (${FLAG_MEANING[f]})` : ""}`).join("; ");
@@ -259,7 +288,9 @@ function confirmed_markdown(c: VerificationReport["confirmed"]): string {
 }
 
 const FLAG_MEANING: Record<string, string> = {
-  synthetic_typing: "text appeared without matching keystrokes — a person cannot type without pressing keys",
+  synthetic_typing: "text appeared without matching keystrokes, or at machine speed — a person cannot type that way",
+  repeat_submission: "the same phone or email already came in on another lead within 90 days",
+  keyboard_word_insertion: "words inserted faster than keys at human speed — phone predictive or swipe typing",
   automation_environment: "a desktop Linux machine on an imprecise IP — the shape of a cloud-hosted browser",
   superhuman_typing_speed: "typing faster than any person sustains",
   stale_certificate: "consent captured long before the lead was sold",
@@ -303,7 +334,7 @@ function to_markdown(r: Omit<VerificationReport, "markdown">): string {
 - **${L.scored} leads scored**, ${L.current_model} under the current model${L.rescored ? ` (${L.rescored} of them rescored from stored data)` : ""}${L.legacy_model ? `; ${L.legacy_model} with no stored data to rescore` : ""}.
 - **${approved} approved, ${review} sent to review, ${reject} rejected** — ${pct(review + reject, L.current_model)} held back.
 - **Consent verified on ${L.consent_verified} (${pct(L.consent_verified, L.current_model)})** — the disclosure matched the approved language on file.
-${r.confirmed.fraud ? `- **Confirmed fraud: ${r.confirmed.caught} of ${r.confirmed.fraud} caught at intake.**\n` : ""}- **${r.outcomes.returned} returns**, of which **${r.outcomes.verification_returns}** were verification problems (fraud, bad contact, consent); the rest were territory and fit.
+${r.confirmed.fraud ? `- **Confirmed fraud: ${r.confirmed.caught} of ${r.confirmed.fraud} caught at intake.**\n` : ""}- **${r.outcomes.returned} returns**, of which **${r.outcomes.verification_returns}** were verification problems (fraud, bad contact, consent)${r.outcomes.returned > r.outcomes.verification_returns ? `; the other ${r.outcomes.returned - r.outcomes.verification_returns} were duplicates, territory or fit` : ""}.
 
 ## Confirmed by a person
 ${confirmed_markdown(r.confirmed)}

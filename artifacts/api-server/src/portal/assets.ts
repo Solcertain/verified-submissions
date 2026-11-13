@@ -19,6 +19,7 @@ export const PORTAL_JS = String.raw`
 
   var FLAGS = {
     synthetic_typing: ["Synthetic typing", "Keystroke timing no person produces: the hallmark of AI browser agents and scripts."],
+    repeat_submission: ["Repeat submission", "The same phone or email already arrived on another lead in the last 90 days."],
     superhuman_typing_speed: ["Superhuman typing speed", "Typed faster than any person can, which points to a script filling the form."],
     automation_environment: ["Automation environment", "Desktop Linux on an IP with no location, typical of headless browsers and agents."],
     bot_detected: ["Bot detected", "TrustedForm's own bot check failed for this session."],

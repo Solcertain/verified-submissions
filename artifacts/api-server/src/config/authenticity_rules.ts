@@ -7,7 +7,7 @@
 // Treat every number as provisional until the distributions in
 // docs/TRUSTEDFORM_FEATURE_MAP.md have been reviewed against real traffic.
 
-export const MODEL_VERSION = "0.4-insights";
+export const MODEL_VERSION = "0.5";
 
 // The score starts neutral and evidence moves it. This is deliberate: the
 // previous model started at 100 and deducted, which meant a certificate we knew
@@ -67,6 +67,16 @@ export const SUPERHUMAN_TYPING = 15;
 // browser agent (Oct 16) had kpm 0 and wpm 2070. It forces review rather than
 // reject while the evidence rests on a single confirmed agent.
 export const SYNTHETIC_TYPING = 40;
+// Narrowed in 0.5. More words than keystrokes is also what a phone keyboard
+// produces: predictive text, swipe typing and autocorrect insert a whole word
+// per tap. Between Oct 12 and Nov 11 2026 the rule fired on 49 real leads at
+// 24-252 kpm (wpm/kpm 1.0-3.7); all 49 sold and none came back. The one
+// operator-confirmed fraud ran 571 kpm (631 wpm). So words-over-keys forces
+// review only at speeds above anything a person on our forms has shown; below
+// it the pattern is recorded in shadow as keyboard_word_insertion. Zero
+// keystrokes with typed text still always forces review.
+export const SYNTHETIC_FAST_KPM = 400;
+export const KEYBOARD_WORD_INSERTION = 0;
 
 // --- Automation environment ---
 // Desktop Linux plus an IP that geolocates only to a country (no state) is the
@@ -90,6 +100,15 @@ export const PLACEHOLDER_NAME = 25;
 export const DISPOSABLE_EMAIL = 20;
 export const IP_STATE_MISMATCH = 10;
 export const PHONE_UNVERIFIED = 5;
+
+// --- Repeat submission (active since 0.5) ---
+// The same phone or email on a different certificate within 90 days, for the
+// same customer. Oct 12 - Nov 11 2026: 4 of 33 sold repeat leads were returned
+// (12%, all four as duplicates) against 10 of 686 for first-time leads (1.5%).
+// Most repeats were still sold and kept, so this costs points without forcing
+// review: buyers that refuse duplicates can filter on the flag.
+export const REPEAT_SUBMISSION = 10;
+export const REPEAT_WINDOW_DAYS = 90;
 
 // --- Certificate integrity ---
 // A certificate presented for a different lead than the one that first claimed
