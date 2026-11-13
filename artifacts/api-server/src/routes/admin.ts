@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { logger } from "../lib/logger.js";
-import { internal_key_matches } from "../middlewares/api_key.js";
+import { internal_key_matches, labeler_for } from "../middlewares/api_key.js";
 import {
   DuplicateCustomerError,
   create_api_key,
@@ -221,7 +221,12 @@ router.post("/admin/customers/:id/outcome-tokens", internal, async (req: Request
 // GET /api/admin/label-queue?days=7[&customer_id=…]
 // The leads a person should confirm this week; see services/label_queue.ts.
 // Labels are written through POST /api/outcomes/label.
-router.get("/admin/label-queue", internal, async (req: Request, res: Response) => {
+router.get("/admin/label-queue", async (req: Request, res: Response) => {
+  // The internal key, or a labelling-only key (see LABELER_KEYS).
+  if (!internal_key_matches(req) && !labeler_for(req)) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
   const days = Math.min(Math.max(Number(req.query["days"]) || 7, 1), 90);
   const customer_id = str(req.query["customer_id"]);
   if (customer_id && !/^[0-9a-f-]{36}$/i.test(customer_id)) {

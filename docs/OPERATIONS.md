@@ -75,6 +75,7 @@ alongside in `score_json.legacy` for comparison.
 |---|---|---|
 | `ACTIVEPROSPECT_API_KEY` | yes | TrustedForm claims (Basic auth) |
 | `INTERNAL_API_KEY` | yes | `x-api-key` on scoring endpoints |
+| `LABELER_KEYS` | no | Labelling-only keys, `name=key` pairs separated by `;`. Each opens the label queue and label endpoint only; labels are attributed to the name. Keys under 24 characters are ignored. Remove a pair to revoke it |
 | `LP_CALLBACK_TOKEN` | yes | Outcome endpoint path secret |
 | `DATABASE_URL` | yes | Neon Postgres |
 | `LP_API_KEY` | for returns | Lead Prosper public API key (Bearer), used by the returns sync |
@@ -223,6 +224,13 @@ behind the page is `GET /api/admin/label-queue?days=7` (internal key). Once a
 period has 10 or more labels, the report's "Confirmed by a person" section adds
 a per-flag table: of the labelled leads each flag fired on, how many were fraud.
 Ten minutes a week here is the single biggest input to calibrating the model.
+
+**Someone else doing the labelling.** Give them a key from `LABELER_KEYS`, never
+`INTERNAL_API_KEY`: it opens this page and records labels under their name, and
+is refused by scoring, reports and every admin endpoint. The judging rules (what
+counts as Fraud, Genuine or Skip) are on the page under "How to judge a lead",
+open on first visit. Each card shows the Lead Prosper lead id with a Copy button,
+and an optional note box (no names or contact details) saved with the label.
 
 ### Returns sync
 

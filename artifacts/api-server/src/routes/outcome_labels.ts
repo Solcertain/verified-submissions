@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { logger } from "../lib/logger.js";
-import { internal_key_matches } from "../middlewares/api_key.js";
+import { internal_key_matches, labeler_for } from "../middlewares/api_key.js";
 import { OPERATOR_LABELS, save_operator_label, type OperatorLabel } from "../services/outcome_store.js";
 
 const router = Router();
@@ -18,7 +18,10 @@ function str(v: unknown): string | undefined {
 // calibration and the customer-facing report are built on, so an unset key
 // refuses rather than lets anyone in.
 router.post("/outcomes/label", async (req: Request, res: Response) => {
-  if (!internal_key_matches(req)) {
+  // The internal key, or a labelling-only key whose name is recorded as the
+  // labeller and cannot be overridden from the body.
+  const labeler = internal_key_matches(req) ? null : labeler_for(req);
+  if (!internal_key_matches(req) && !labeler) {
     res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
   }
@@ -34,7 +37,7 @@ router.post("/outcomes/label", async (req: Request, res: Response) => {
     lp_lead_id: str(body["lp_lead_id"]),
     label: label as OperatorLabel,
     reason: str(body["reason"]),
-    labelled_by: str(body["labelled_by"]),
+    labelled_by: labeler ?? str(body["labelled_by"]),
   };
   if (!input.analysis_id && !input.certificate_url && !input.lp_lead_id) {
     res.status(400).json({ ok: false, error: "Give analysis_id, certificate_url or lp_lead_id" });

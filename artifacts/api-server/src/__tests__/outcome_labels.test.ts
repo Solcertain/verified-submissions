@@ -80,3 +80,35 @@ describe("POST /api/outcomes/label", () => {
     expect(res.body.engine_result).toBe("false_alarm");
   });
 });
+
+describe("labelling-only keys (LABELER_KEYS)", () => {
+  const ASSISTANT = "assistant-key-0123456789abcdef";
+  beforeEach(() => {
+    process.env["LABELER_KEYS"] = `assistant=${ASSISTANT}; short=tooshort`;
+  });
+  afterEach(() => {
+    delete process.env["LABELER_KEYS"];
+  });
+
+  it("lets a labeller record a label, attributed to their name whatever the body says", async () => {
+    save.mockResolvedValue(stored("review"));
+    const res = await request(app)
+      .post("/api/outcomes/label")
+      .set("x-api-key", ASSISTANT)
+      .send({ analysis_id: "x", label: "fraud", labelled_by: "stephen" });
+    expect(res.status).toBe(201);
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ labelled_by: "assistant" }));
+  });
+
+  it("ignores pairs whose key is too short to be safe", async () => {
+    const res = await request(app).post("/api/outcomes/label").set("x-api-key", "tooshort").send({ analysis_id: "x", label: "fraud" });
+    expect(res.status).toBe(401);
+  });
+
+  it("refuses everyone when LABELER_KEYS and INTERNAL_API_KEY are unset", async () => {
+    delete process.env["LABELER_KEYS"];
+    delete process.env["INTERNAL_API_KEY"];
+    const res = await request(app).post("/api/outcomes/label").set("x-api-key", ASSISTANT).send({ analysis_id: "x", label: "fraud" });
+    expect(res.status).toBe(401);
+  });
+});

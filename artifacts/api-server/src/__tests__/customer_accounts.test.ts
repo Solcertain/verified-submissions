@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Key auth and customer scoping, end to end through the routes. The database
 // edges are mocked; what is under test is which customer each request resolves
@@ -25,6 +25,7 @@ vi.mock("../services/outcome_store.js", () => ({
   normalize_outcome_payload: vi.fn(),
 }));
 vi.mock("../services/report_store.js", () => ({ load_report_rows: vi.fn(async () => ({ subs: [], outcomes: [] })) }));
+vi.mock("../services/label_queue.js", () => ({ load_label_queue: vi.fn(async () => []) }));
 vi.mock("../services/google_sheets.js", () => ({
   append_review_row: vi.fn(async () => ({ success: true, row_id: "r1", error: null })),
 }));
@@ -304,5 +305,30 @@ describe("POST /api/admin/customers (hand-onboarded beta)", () => {
     mocked(create_manual_customer).mockRejectedValueOnce(new DuplicateCustomerError("exists"));
     const dup = await request(app()).post("/api/admin/customers").set("x-api-key", INTERNAL).send({ name: "B", email: "b@b.com" });
     expect([missing.status, tier.status, dup.status]).toEqual([400, 400, 409]);
+  });
+});
+
+describe("labelling-only key", () => {
+  const LABELER = "assistant-key-0123456789abcdef";
+  beforeEach(() => {
+    process.env["LABELER_KEYS"] = `assistant=${LABELER}`;
+  });
+  afterEach(() => {
+    delete process.env["LABELER_KEYS"];
+  });
+
+  it("opens the label queue", async () => {
+    const res = await request(app()).get("/api/admin/label-queue?days=7").set("x-api-key", LABELER);
+    expect(res.status).toBe(200);
+  });
+
+  it("opens nothing else: admin, scoring and reports all refuse it", async () => {
+    const admin = await request(app()).post("/api/admin/customers").set("x-api-key", LABELER).send({ name: "X", email: "x@x.com" });
+    const report = await request(app()).get("/api/reports/verification?days=7").set("x-api-key", LABELER);
+    const score = await request(app()).post("/api/leadprosper/pre-ping").set("x-api-key", LABELER).send({ certificate_url: "https://cert.trustedform.com/abc" });
+    expect(admin.status).toBe(401);
+    expect(report.status).toBe(401);
+    expect([401, 403]).toContain(score.status);
+    expect(create_manual_customer).not.toHaveBeenCalled();
   });
 });

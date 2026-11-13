@@ -36,6 +36,12 @@ export const LABELS_CSS = `
 .lq-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
 .lq-ids { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .lq-ids .mono { user-select: all; }
+.lq-guide { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
+.lq-guide summary { cursor: pointer; font-weight: 600; }
+.lq-guide h3 { font-size: 14px; margin: 14px 0 4px; }
+.lq-guide ul { margin: 4px 0; padding-left: 18px; font-size: 14px; }
+.lq-guide p { font-size: 14px; margin: 6px 0; }
+.lq-note { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; font-size: 14px; }
 .lq-why { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mut); }
 .lq-meta { color: var(--text-mut); font-size: 13px; margin: 6px 0; }
 .lq-flags { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
@@ -89,11 +95,11 @@ export const LABELS_JS = `(function () {
     root.textContent = "";
     var page = el("div", "lq");
     page.appendChild(el("h1", null, "Label queue"));
-    page.appendChild(el("p", "lq-sub", "Operator only. Enter the internal API key to load this week's leads. It is kept in this tab only."));
+    page.appendChild(el("p", "lq-sub", "Enter your labelling key to load this week's leads. It is kept in this browser tab only."));
     if (message) page.appendChild(el("div", "alert alert-bad", message));
     var form = el("form", "lq-bar");
     var input = el("input");
-    input.type = "password"; input.autocomplete = "off"; input.placeholder = "Internal API key";
+    input.type = "password"; input.autocomplete = "off"; input.placeholder = "Labelling key";
     var btn = el("button", "btn btn-primary", "Unlock");
     btn.type = "submit";
     form.appendChild(input); form.appendChild(btn);
@@ -158,13 +164,17 @@ export const LABELS_JS = `(function () {
     }
     if (it.return_reason) c.appendChild(el("div", "lq-return", "Buyer said: " + it.return_reason));
 
+    var note = el("input", "lq-note");
+    note.type = "text"; note.maxLength = 200;
+    note.placeholder = "Why? e.g. buyer says homeowner never filled out a form (no names or numbers)";
+    c.appendChild(note);
     var actions = el("div", "lq-actions");
     var result = el("div", "lq-result");
     function label(kind) {
       Array.prototype.forEach.call(actions.querySelectorAll("button"), function (b) { b.disabled = true; });
       api("/api/outcomes/label", {
         method: "POST",
-        body: JSON.stringify({ analysis_id: it.analysis_id, label: kind, labelled_by: "label-queue", reason: WHY[it.reason] })
+        body: JSON.stringify({ analysis_id: it.analysis_id, label: kind, labelled_by: "label-queue", reason: (note.value.trim() ? note.value.trim() + " | " : "") + WHY[it.reason] })
       }).then(function (body) {
         c.classList.add("done");
         result.textContent = (kind === "fraud" ? "Fraud. " : "Genuine. ") + (RESULT[body.engine_result] || "Recorded.");
@@ -185,6 +195,51 @@ export const LABELS_JS = `(function () {
     return c;
   }
 
+  var GUIDE = [
+    ["h3", "Steps for each lead"],
+    ["ul", [
+      "Click Copy next to the Lead Prosper ID, then search for it in Lead Prosper.",
+      "Read the buyer, any return reason and any notes or call results.",
+      "Come back and choose Fraud, Genuine or Skip. Add a short note saying why.",
+      "Never type names, phone numbers, emails or addresses into the note."
+    ]],
+    ["h3", "Fraud: the person did not really submit"],
+    ["ul", [
+      "A buyer says the homeowner never filled out a form or never asked for solar.",
+      "The name is fake or a placeholder (“First Last”, “Test”), or the person does not exist.",
+      "The phone belongs to a business, a gym, or someone else entirely.",
+      "Several leads with the same contact details arrived in a way no person would submit them."
+    ]],
+    ["h3", "Genuine: a real homeowner submitted it"],
+    ["ul", [
+      "A buyer reached the person and they remembered filling out the form, even if they were not interested.",
+      "It was sold and kept with no complaint, and nothing about it looks fake.",
+      "Returned only for fit: outside the area, already has solar, renter, shaded roof, bad credit, duplicate of their own earlier request."
+    ]],
+    ["h3", "Skip: you cannot tell"],
+    ["ul", [
+      "No buyer notes and no return, and nothing stands out either way.",
+      "Disconnected or wrong number with no other detail. Skip unless the buyer says the person never submitted."
+    ]],
+    ["p", "The flags on each card are what the engine saw. Judge the lead on what happened in Lead Prosper, not on the flags. Your answer is how the engine learns whether those flags were right."]
+  ];
+
+  function guide(open) {
+    var d = el("details", "lq-guide");
+    if (open) d.open = true;
+    d.appendChild(el("summary", null, "How to judge a lead"));
+    GUIDE.forEach(function (g) {
+      if (g[0] === "ul") {
+        var ul = el("ul");
+        g[1].forEach(function (t) { ul.appendChild(el("li", null, t)); });
+        d.appendChild(ul);
+      } else {
+        d.appendChild(el(g[0], null, g[1]));
+      }
+    });
+    return d;
+  }
+
   function render(days, data) {
     root.textContent = "";
     var page = el("div", "lq");
@@ -200,6 +255,9 @@ export const LABELS_JS = `(function () {
     lock.addEventListener("click", function () { set_key(null); unlock(); });
     bar.appendChild(lock);
     page.appendChild(bar);
+    var seen = false;
+    try { seen = localStorage.getItem("vs.labels.guide_seen") === "1"; localStorage.setItem("vs.labels.guide_seen", "1"); } catch (e) {}
+    page.appendChild(guide(!seen));
     if (!data.items.length) page.appendChild(el("div", "empty", "Nothing to label. Every lead in this window has a verdict."));
     data.items.forEach(function (it) { page.appendChild(card(it)); });
     root.appendChild(page);

@@ -106,6 +106,25 @@ export function internal_key_matches(req: Request): boolean {
   return safe_equal(provided, expected);
 }
 
+// Labelling-only keys, for people who confirm leads as fraud or genuine but
+// must not hold INTERNAL_API_KEY. LABELER_KEYS is "name=key" pairs separated
+// by ";" (e.g. "assistant=abc123"). A match opens the label queue and the
+// label endpoint only, and every label it writes is attributed to that name.
+// Returns the labeller's name, or null. Revoke one by removing its pair.
+export function labeler_for(req: Request): string | null {
+  const provided = req.header("x-api-key") ?? "";
+  const configured = process.env["LABELER_KEYS"] ?? "";
+  if (!provided || !configured) return null;
+  for (const pair of configured.split(";")) {
+    const i = pair.indexOf("=");
+    if (i < 1) continue;
+    const name = pair.slice(0, i).trim();
+    const key = pair.slice(i + 1).trim();
+    if (name && key.length >= 24 && safe_equal(provided, key)) return name;
+  }
+  return null;
+}
+
 // For legacy endpoints that claim certificates without storing or metering
 // them, or that feed Solcertain's own review queue: Solcertain only. Runs after
 // require_api_key. Customers use POST /api/v1/verify.
