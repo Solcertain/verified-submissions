@@ -31,6 +31,8 @@ export type QueueReason = "held_back" | "fraud_return" | "control";
 
 export interface QueueItem {
   analysis_id: string;
+  // Lead Prosper's own lead id, for finding the lead in Lead Prosper.
+  lp_lead_id: string | null;
   reason: QueueReason;
   received_at: string;
   score: number | null;
@@ -85,7 +87,8 @@ export async function load_label_queue(days: number, customer_id?: string): Prom
   // stable while the reviewer works through it and changes week to week.
   const r = await getDb().execute(sql`
     with recent as (
-      select l.id, l.received_at, l.certificate_url, l.status, l.score_json, l.trustedform_raw_json
+      select l.id, l.received_at, l.certificate_url, l.status, l.score_json, l.trustedform_raw_json,
+             l.raw_payload_json->>'lp_lead_id' as lp_lead_id
         from lead_submissions l
        where l.received_at > now() - make_interval(days => ${days})${only_customer}
          and not exists (
@@ -115,7 +118,7 @@ export async function load_label_queue(days: number, customer_id?: string): Prom
              ) as control_rank
         from with_outcome w
     )
-    select id, received_at, status, outcome, return_reason,
+    select id, lp_lead_id, received_at, status, outcome, return_reason,
            coalesce(reason, 'control') as reason,
            score_json->>'value' as score,
            score_json->'risk_flags' as flags,
@@ -134,6 +137,7 @@ export async function load_label_queue(days: number, customer_id?: string): Prom
   const items = (r.rows as Record<string, unknown>[]).map(
     (row): QueueItem => ({
       analysis_id: String(row["id"]),
+      lp_lead_id: (row["lp_lead_id"] as string) || null,
       reason: row["reason"] as QueueReason,
       received_at: new Date(String(row["received_at"])).toISOString(),
       score: num(row["score"]),

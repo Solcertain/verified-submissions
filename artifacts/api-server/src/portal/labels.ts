@@ -34,6 +34,8 @@ export const LABELS_CSS = `
 .lq-item { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
 .lq-item.done { opacity: .5; }
 .lq-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+.lq-ids { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.lq-ids .mono { user-select: all; }
 .lq-why { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mut); }
 .lq-meta { color: var(--text-mut); font-size: 13px; margin: 6px 0; }
 .lq-flags { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
@@ -125,7 +127,22 @@ export const LABELS_JS = `(function () {
     var c = el("div", "lq-item");
     var head = el("div", "lq-head");
     head.appendChild(el("span", "lq-why", WHY[it.reason] || it.reason));
-    head.appendChild(el("span", "mono small", it.analysis_id.slice(0, 8)));
+    var ids = el("span", "lq-ids");
+    if (it.lp_lead_id) {
+      ids.appendChild(el("span", "mono small", "Lead Prosper ID: " + it.lp_lead_id));
+      var copy = el("button", "btn btn-sm", "Copy");
+      copy.type = "button";
+      copy.addEventListener("click", function () {
+        var done = function () { copy.textContent = "Copied"; setTimeout(function () { copy.textContent = "Copy"; }, 1500); };
+        try {
+          navigator.clipboard.writeText(it.lp_lead_id).then(done, function () { copy.textContent = "Select the id and copy it"; });
+        } catch (e) { copy.textContent = "Select the id and copy it"; }
+      });
+      ids.appendChild(copy);
+    } else {
+      ids.appendChild(el("span", "mono small", "No Lead Prosper ID (ours: " + it.analysis_id.slice(0, 8) + ")"));
+    }
+    head.appendChild(ids);
     c.appendChild(head);
     c.appendChild(el("div", "lq-meta", meta_line(it)));
     if (it.flags.length || it.shadow_flags.length) {

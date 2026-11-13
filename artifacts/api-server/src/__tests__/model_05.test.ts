@@ -109,6 +109,7 @@ describe("repeat submission", () => {
 
 const item = (id: string, reason: QueueItem["reason"]): QueueItem => ({
   analysis_id: id,
+  lp_lead_id: null,
   reason,
   received_at: "2026-11-10T00:00:00.000Z",
   score: 90,
